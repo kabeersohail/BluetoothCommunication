@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.Message
 import android.util.Log
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,13 +29,17 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private lateinit var messagesTextView: TextView
     private lateinit var receiveButton: Button
     private lateinit var sendButton: Button
+    private lateinit var stopButton: Button
+    private lateinit var frequencySeekBar: SeekBar
+    private lateinit var frequencyLabel: TextView
 
     private lateinit var bluetoothService: BluetoothService
 
     private val autoSendHandler = Handler(Looper.getMainLooper())
     private var isAutoSending = false
     private var isReceiving = false
-    private val sendFrequencyMillis = 1000L // Hardcoded to 1 second for simplicity
+    private var sendFrequencyMillis = 1000L // Default 1 second
+    private var messageCount = 0
 
     // Runnable for automatic data sending
     private val autoSendRunnable = object : Runnable {
@@ -44,12 +49,19 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                 val ecmData = generateECMData()
                 Log.d(TAG, "autoSendRunnable: Generated ECM data: $ecmData")
                 bluetoothService.write(ecmData.toByteArray())
-                messagesTextView.append("\nMe (Sent): $ecmData")
+                messageCount++
+                messagesTextView.append("\n[${messageCount}] Me (Sent): $ecmData")
+
+                // Auto-scroll to bottom
+                runOnUiThread {
+                    val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
+                    scrollView.post { scrollView.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
+                }
             } else {
                 Log.w(TAG, "autoSendRunnable: Not sending data. Not connected or auto-sending stopped. Current state: ${bluetoothService.currentState}")
-                stopAutoSending() // Ensures the loop breaks if state changes
+                stopAutoSending()
             }
-            if (isAutoSending) { // Only reschedule if still in auto-sending mode
+            if (isAutoSending) {
                 Log.d(TAG, "autoSendRunnable: Rescheduling in ${sendFrequencyMillis}ms.")
                 autoSendHandler.postDelayed(this, sendFrequencyMillis)
             } else {
@@ -58,14 +70,14 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         }
     }
 
-    private val mainHandler: Handler = @SuppressLint("HandlerLeak") // Suppress warning about handler leak
+    private val mainHandler: Handler = @SuppressLint("HandlerLeak")
     object : Handler(Looper.getMainLooper()) {
         override fun handleMessage(msg: Message) {
             Log.d(TAG, "mainHandler: handleMessage() called for what: ${msg.what}")
             when (msg.what) {
                 MESSAGE_READ -> {
                     val readBuf = msg.obj as ByteArray
-                    val readMessage = String(readBuf, 0, msg.arg1) // msg.arg1 contains numBytes
+                    val readMessage = String(readBuf, 0, msg.arg1)
                     Log.d(TAG, "mainHandler: MESSAGE_READ received. Message: '$readMessage'")
                     onMessageReceived(readMessage)
                 }
@@ -98,7 +110,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         }
     }
 
-    // Activity Result Launcher for permissions
+    // Activity Result Launchers
     private val requestBluetoothPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         val granted = permissions.entries.all { it.value }
         Log.d(TAG, "requestBluetoothPermissions: Permissions result. Granted: $granted")
@@ -110,7 +122,6 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         }
     }
 
-    // Activity Result Launcher for enabling Bluetooth
     private val enableBluetoothLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         Log.d(TAG, "enableBluetoothLauncher: Bluetooth enable request result. Result code: ${result.resultCode}")
         if (result.resultCode == RESULT_OK) {
@@ -125,70 +136,112 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         setContentView(R.layout.activity_main)
         Log.d(TAG, "onCreate() called.")
 
+        initializeViews()
+        bluetoothService = BluetoothService(mainHandler)
+        requestPermissions()
+        setupEventListeners()
+    }
+
+    private fun initializeViews() {
         statusTextView = findViewById(R.id.statusTextView)
         messagesTextView = findViewById(R.id.messagesTextView)
         receiveButton = findViewById(R.id.receiveButton)
         sendButton = findViewById(R.id.sendButton)
+        stopButton = findViewById(R.id.stopButton)
+        frequencySeekBar = findViewById(R.id.frequencySeekBar)
+        frequencyLabel = findViewById(R.id.frequencyLabel)
 
-        bluetoothService = BluetoothService(mainHandler)
+        // Initialize frequency controls
+        updateFrequencyLabel()
+    }
 
-        requestPermissions()
-
+    private fun setupEventListeners() {
         receiveButton.setOnClickListener {
             Log.d(TAG, "receiveButton clicked.")
-            if (bluetoothAdapter?.isEnabled == true) {
-                // Always ensure auto-sending is off and stop its runnable if switching roles
-                isAutoSending = false
-                stopAutoSending()
-                Log.d(TAG, "receiveButton: Ensuring auto-sending is off. isAutoSending: $isAutoSending.")
-
-                isReceiving = true // Set the role flag for receiving
-                Log.d(TAG, "receiveButton: Setting isReceiving=true.")
-
-                bluetoothService.stop() // Stop any previous connection/sending
-                bluetoothService.start() // Start as server (listening)
-                statusTextView.text = "Status: Waiting to Receive..."
-                messagesTextView.text = "" // Clear old messages for a fresh session
-            } else {
-                Toast.makeText(this, "Bluetooth is not enabled.", Toast.LENGTH_SHORT).show()
-                Log.w(TAG, "receiveButton: Bluetooth is not enabled.")
-            }
+            startReceiveMode()
         }
 
         sendButton.setOnClickListener {
             Log.d(TAG, "sendButton clicked.")
-            if (bluetoothAdapter?.isEnabled == true) {
-                // Always ensure receiving is off and stop any previous auto-sending attempts
-                isReceiving = false
-                stopAutoSending() // This will set isAutoSending = false as intended for *previous* state.
-
-                Log.d(TAG, "sendButton: Ensuring receiving is off. isReceiving: $isReceiving.")
-
-                bluetoothService.stop() // Stop any previous connection/receiving
-                messagesTextView.text = "" // Clear old messages for a fresh session
-
-                // Now set isAutoSending to true, AFTER any previous state is cleared by stopAutoSending and bluetoothService.stop
-                isAutoSending = true
-                Log.d(TAG, "sendButton: Setting isAutoSending=true for current action.")
-
-                @SuppressLint("MissingPermission") // Permissions handled via requestBluetoothPermissions
-                val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter?.bondedDevices
-                if (!pairedDevices.isNullOrEmpty()) {
-                    Log.d(TAG, "sendButton: Found paired devices. Connecting to first: ${pairedDevices.first().name}")
-                    val deviceToConnect = pairedDevices.first()
-                    bluetoothService.connect(deviceToConnect) // Start as client (connecting)
-                    statusTextView.text = "Status: Attempting to Send..."
-                } else {
-                    Toast.makeText(this, "No paired devices found. Pair devices first.", Toast.LENGTH_LONG).show()
-                    Log.w(TAG, "sendButton: No paired devices found. Cannot connect to send.")
-                    // If no devices, we can't send, so revert isAutoSending
-                    isAutoSending = false
-                }
-            } else {
-                Toast.makeText(this, "Bluetooth is not enabled.", Toast.LENGTH_SHORT).show()
-                Log.w(TAG, "sendButton: Bluetooth is not enabled.")
-            }
+            startSendMode()
         }
+
+        stopButton.setOnClickListener {
+            Log.d(TAG, "stopButton clicked.")
+            stopAllOperations()
+        }
+
+        frequencySeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // Map progress (0-100) to frequency (100ms - 5000ms)
+                sendFrequencyMillis = (100 + (progress * 49)).toLong()
+                updateFrequencyLabel()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+    }
+
+    private fun updateFrequencyLabel() {
+        val frequency = 1000.0 / sendFrequencyMillis
+        frequencyLabel.text = "Send Frequency: ${String.format("%.1f", frequency)} Hz (${sendFrequencyMillis}ms)"
+    }
+
+    private fun startReceiveMode() {
+        if (bluetoothAdapter?.isEnabled != true) {
+            Toast.makeText(this, "Bluetooth is not enabled.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        stopAllOperations()
+        isReceiving = true
+        messageCount = 0
+
+        bluetoothService.start()
+        statusTextView.text = "Status: Waiting to Receive..."
+        messagesTextView.text = "=== Receive Mode Started ===\n"
+        updateButtonStates()
+    }
+
+    private fun startSendMode() {
+        if (bluetoothAdapter?.isEnabled != true) {
+            Toast.makeText(this, "Bluetooth is not enabled.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        stopAllOperations()
+        messageCount = 0
+        messagesTextView.text = "=== Send Mode Started ===\n"
+
+        @SuppressLint("MissingPermission")
+        val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter?.bondedDevices
+        if (!pairedDevices.isNullOrEmpty()) {
+            isAutoSending = true
+            val deviceToConnect = pairedDevices.first()
+            bluetoothService.connect(deviceToConnect)
+            statusTextView.text = "Status: Attempting to Send..."
+            updateButtonStates()
+        } else {
+            Toast.makeText(this, "No paired devices found. Pair devices first.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun stopAllOperations() {
+        isAutoSending = false
+        isReceiving = false
+        stopAutoSending()
+        bluetoothService.stop()
+        statusTextView.text = "Status: Stopped"
+        updateButtonStates()
+    }
+
+    private fun updateButtonStates() {
+        val isActive = isAutoSending || isReceiving
+        receiveButton.isEnabled = !isActive
+        sendButton.isEnabled = !isActive
+        stopButton.isEnabled = isActive
+        frequencySeekBar.isEnabled = !isActive
     }
 
     private fun requestPermissions() {
@@ -210,54 +263,48 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         }.toTypedArray()
 
         if (neededPermissions.isNotEmpty()) {
-            Log.d(TAG, "requestPermissions: Launching permission request for ${neededPermissions.size} permissions.")
             requestBluetoothPermissions.launch(neededPermissions)
         } else {
-            Log.d(TAG, "requestPermissions: All permissions already granted. Checking Bluetooth enabled.")
             checkBluetoothEnabled()
         }
     }
 
-    @SuppressLint("MissingPermission") // Permissions handled via requestBluetoothPermissions
+    @SuppressLint("MissingPermission")
     private fun checkBluetoothEnabled() {
         Log.d(TAG, "checkBluetoothEnabled() called.")
         if (bluetoothAdapter == null) {
             Toast.makeText(this, "Device doesn't support Bluetooth", Toast.LENGTH_LONG).show()
-            Log.e(TAG, "checkBluetoothEnabled: Device does not support Bluetooth.")
             finish()
         } else if (!bluetoothAdapter.isEnabled) {
-            Log.d(TAG, "checkBluetoothEnabled: Bluetooth is disabled. Requesting enable.")
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             enableBluetoothLauncher.launch(enableBtIntent)
-        } else {
-            Log.d(TAG, "checkBluetoothEnabled: Bluetooth is enabled.")
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy() called.")
-        bluetoothService.stop()
-        stopAutoSending()
+        stopAllOperations()
     }
 
-    // region BluetoothCommunicationListener Callbacks (Ensured to run on UI thread via mainHandler)
+    // BluetoothCommunicationListener Callbacks
     override fun onMessageReceived(message: String) {
         Log.d(TAG, "onMessageReceived() called. Message: '$message'")
-        messagesTextView.append("\nOther (Received): $message")
+        messageCount++
+        messagesTextView.append("\n[${messageCount}] Other (Received): $message")
+
+        // Auto-scroll to bottom
+        val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
+        scrollView.post { scrollView.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
     }
 
     override fun onConnected(deviceName: String, deviceAddress: String) {
-        Log.d(TAG, "onConnected() called. Device: $deviceName. isAutoSending: $isAutoSending, isReceiving: $isReceiving")
+        Log.d(TAG, "onConnected() called. Device: $deviceName")
         if (isAutoSending) {
             statusTextView.text = "Status: Sending to $deviceName"
-            Log.d(TAG, "onConnected: isAutoSending is TRUE. Starting auto-sending as sender.")
-            // Removed the redundant check inside startAutoSending()
-            // This is the direct call to post the runnable now.
             autoSendHandler.post(autoSendRunnable)
         } else if (isReceiving) {
             statusTextView.text = "Status: Receiving from $deviceName"
-            Log.d(TAG, "onConnected: isReceiving is TRUE. Ready to receive as receiver.")
         }
         Toast.makeText(this, "Connected to $deviceName!", Toast.LENGTH_SHORT).show()
     }
@@ -266,20 +313,14 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         Log.e(TAG, "onConnectionFailed() called. Error: $error")
         statusTextView.text = "Connection Failed: $error"
         Toast.makeText(this, "Connection Failed: $error", Toast.LENGTH_LONG).show()
-        // Reset all relevant flags and stop any ongoing processes
-        stopAutoSending() // This also sets isAutoSending = false
-        isReceiving = false
-        Log.d(TAG, "onConnectionFailed: Flags reset: isAutoSending=$isAutoSending, isReceiving=$isReceiving")
+        stopAllOperations()
     }
 
     override fun onDisconnected() {
         Log.d(TAG, "onDisconnected() called.")
         statusTextView.text = "Disconnected."
         Toast.makeText(this, "Bluetooth Disconnected.", Toast.LENGTH_SHORT).show()
-        // Reset all relevant flags and stop any ongoing processes
-        stopAutoSending() // This also sets isAutoSending = false
-        isReceiving = false
-        Log.d(TAG, "onDisconnected: Flags reset: isAutoSending=$isAutoSending, isReceiving=$isReceiving")
+        stopAllOperations()
     }
 
     override fun onConnecting(deviceName: String, deviceAddress: String) {
@@ -289,56 +330,55 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
     override fun onListenStarted() {
         Log.d(TAG, "onListenStarted() called.")
-        // Only update status if we are in explicit receive mode
         if (isReceiving) {
             statusTextView.text = "Status: Listening for connections (Ready to Receive)"
-            Log.d(TAG, "onListenStarted: Set to Ready to Receive status.")
         }
     }
-    // endregion
 
-    // region Automatic Data Sending Logic
-
-    // Removed the outer 'if (!isAutoSending)' check
-    private fun startAutoSending() {
-        Log.d(TAG, "startAutoSending() called. Directly posting autoSendRunnable.")
-        // The isAutoSending flag is set in the button click listener,
-        // and checked within the runnable itself for rescheduling.
-        // This method's sole purpose now is to kick off the *first* runnable post.
-        autoSendHandler.post(autoSendRunnable)
-    }
-
+    // Auto-sending logic
     private fun stopAutoSending() {
         Log.d(TAG, "stopAutoSending() called. Current isAutoSending: $isAutoSending")
         if (isAutoSending) {
-            isAutoSending = false // Set flag to false
-            autoSendHandler.removeCallbacks(autoSendRunnable) // Remove any pending callbacks
+            isAutoSending = false
+            autoSendHandler.removeCallbacks(autoSendRunnable)
             Log.d(TAG, "stopAutoSending: Auto-sending stopped, callbacks removed.")
-        } else {
-            Log.d(TAG, "stopAutoSending: Auto-sending was not active.")
         }
     }
 
     /**
-     * Generates simulated ECM data.
+     * Enhanced ECM data generator with more realistic values
      */
     private fun generateECMData(): String {
         val random = Random()
-        val vinChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        val timestamp = System.currentTimeMillis()
+
+        // Generate more realistic VIN
+        val vinChars = "123456789ABCDEFGHJKLMNPRSTUVWXYZ" // Excluding I, O, Q
         val vin = (1..17).map { vinChars[random.nextInt(vinChars.length)] }.joinToString("")
 
-        val odometer = random.nextInt(1000000) // 0 - 999,999 km
-        val rpm = random.nextInt(4500) + 500 // 500 - 4999 RPM
-        val engineHours = String.format("%.2f", random.nextDouble() * 2000) // 0.00 - 1999.99 hours
-        val engineState = if (random.nextBoolean()) "RUNNING" else "OFF"
-        val fuelLevel = random.nextInt(101) // 0-100%
-        val coolantTemp = random.nextInt(80) + 70 // 70-149 Celsius
+        val odometer = random.nextInt(500000) + 10000 // 10,000 - 509,999 km
+        val rpm = when {
+            random.nextDouble() < 0.3 -> 0 // 30% chance engine is off
+            random.nextDouble() < 0.7 -> random.nextInt(1000) + 600 // Idle range
+            else -> random.nextInt(3000) + 1500 // Driving range
+        }
 
-        return "VIN:$vin,ODO:$odometer,RPM:$rpm,EH:$engineHours,State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C"
+        val engineHours = String.format("%.1f", random.nextDouble() * 5000 + 100)
+        val engineState = if (rpm > 0) "RUNNING" else "OFF"
+        val fuelLevel = random.nextInt(101) // 0-100%
+        val coolantTemp = if (engineState == "RUNNING") {
+            random.nextInt(40) + 80 // 80-119°C when running
+        } else {
+            random.nextInt(30) + 20 // 20-49°C when off
+        }
+
+        val speed = if (rpm > 1200) random.nextInt(80) else 0 // km/h
+        val throttlePos = if (rpm > 800) random.nextInt(100) else 0 // %
+
+        return "TS:$timestamp,VIN:$vin,ODO:$odometer,RPM:$rpm,EH:$engineHours,State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${speed}km/h,Throttle:$throttlePos%"
     }
 
     companion object {
-        private const val TAG = "MainActivity" // Tag for MainActivity logs
+        private const val TAG = "MainActivity"
     }
-    // endregion
 }

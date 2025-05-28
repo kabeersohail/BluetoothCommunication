@@ -14,8 +14,12 @@
         android:text="Status: Not connected"
         android:textSize="18sp"
         android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="16dp"
+        android:background="#f0f0f0"
+        android:padding="8dp"
+        android:textColor="@android:color/black" />
 
+    <!-- Control Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -25,41 +29,145 @@
 
         <Button
             android:id="@+id/receiveButton"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Receive (Start Server)"
-            android:layout_marginEnd="8dp"/>
+            android:layout_weight="1"
+            android:text="Receive\n(Server)"
+            android:layout_marginEnd="4dp"
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/sendButton"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Send (Start Client)"
-            android:layout_marginStart="8dp"/>
+            android:layout_weight="1"
+            android:text="Send\n(Client)"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/stopButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Stop"
+            android:layout_marginStart="4dp"
+            android:enabled="false"
+            android:textSize="12sp"
+            android:backgroundTint="#d32f2f" />
+
     </LinearLayout>
 
+    <!-- Frequency Control -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="16dp"
+        android:background="#e8f5e8"
+        android:padding="12dp">
+
+        <TextView
+            android:id="@+id/frequencyLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Send Frequency: 1.0 Hz (1000ms)"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"
+            android:textColor="@android:color/black" />
+
+        <SeekBar
+            android:id="@+id/frequencySeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="18" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Fast (10Hz)"
+                android:textSize="12sp"
+                android:textColor="@android:color/darker_gray" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Slow (0.2Hz)"
+                android:textSize="12sp"
+                android:gravity="end"
+                android:textColor="@android:color/darker_gray" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Messages Section -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Messages:"
         android:textSize="16sp"
-        android:textStyle="italic"
-        android:layout_marginBottom="8dp"/>
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"
+        android:textColor="@android:color/black" />
 
     <ScrollView
+        android:id="@+id/scrollView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="16dp"
+        android:background="#f8f8f8"
+        android:padding="4dp">
 
         <TextView
             android:id="@+id/messagesTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
+            android:text="Ready to start communication..."
             android:padding="8dp"
-            android:background="#e0e0e0"
-            android:textColor="@android:color/black"/>
+            android:textColor="@android:color/black"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
     </ScrollView>
+
+    <!-- Statistics (optional) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#f0f8ff"
+        android:padding="8dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Data Rate: Real-time"
+            android:textSize="12sp"
+            android:textColor="@android:color/darker_gray" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Protocol: Bluetooth SPP"
+            android:textSize="12sp"
+            android:gravity="end"
+            android:textColor="@android:color/darker_gray" />
+
+    </LinearLayout>
 
 </LinearLayout>
