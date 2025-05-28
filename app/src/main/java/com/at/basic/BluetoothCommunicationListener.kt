@@ -85,7 +85,7 @@ class BluetoothService(
     @Synchronized
     @SuppressLint("MissingPermission") // Permissions handled in MainActivity
     fun connect(device: BluetoothDevice) {
-        Log.d(TAG, "connect() called for device: ${device.name} (${device.address}). Current state: $currentState")
+        Log.d(TAG, "connect() called for device: ${device.name} (${device.address}). Paired: ${isDevicePaired(device)}")
 
         // Cancel any thread currently running a connection
         connectedThread?.cancel()
@@ -195,7 +195,7 @@ class BluetoothService(
      */
     private inner class AcceptThread : Thread() {
         private val mmServerSocket: BluetoothServerSocket? by lazy(LazyThreadSafetyMode.NONE) {
-            bluetoothAdapter?.listenUsingRfcommWithServiceRecord(Constants.ECM_SERVICE_NAME, Constants.MY_UUID)
+            bluetoothAdapter?.listenUsingInsecureRfcommWithServiceRecord(Constants.ECM_SERVICE_NAME, Constants.MY_UUID)
         }
 
         @Volatile
@@ -279,7 +279,19 @@ class BluetoothService(
     private inner class ConnectThread(private val device: BluetoothDevice) : Thread() {
 
         private val mmSocket: BluetoothSocket? by lazy(LazyThreadSafetyMode.NONE) {
-            device.createRfcommSocketToServiceRecord(Constants.MY_UUID)
+            try {
+                // First try the standard insecure method
+                device.createInsecureRfcommSocketToServiceRecord(Constants.MY_UUID)
+            } catch (e: Exception) {
+                try {
+                    // Fallback: Use reflection to create insecure socket
+                    val method = device.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
+                    method.invoke(device, 1) as BluetoothSocket
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Could not create insecure socket", e2)
+                    null
+                }
+            }
         }
 
         override fun run() {
@@ -423,4 +435,11 @@ class BluetoothService(
         handler.obtainMessage(MESSAGE_DISCONNECTED).sendToTarget()
         Log.d(TAG, "connectionLost(): MESSAGE_DISCONNECTED sent to handler.")
     }
+
+    @SuppressLint("MissingPermission")
+    private fun isDevicePaired(device: BluetoothDevice): Boolean {
+        return bluetoothAdapter?.bondedDevices?.contains(device) == true
+    }
+
+
 }
