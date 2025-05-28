@@ -16,51 +16,27 @@
         android:textStyle="bold"
         android:layout_marginBottom="16dp" />
 
-    <Button
-        android:id="@+id/serverButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Start as Server"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="8dp"/>
-
-    <Button
-        android:id="@+id/clientButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Connect as Client"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="16dp"/>
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center_vertical"
+        android:gravity="center_horizontal"
         android:layout_marginBottom="16dp">
 
-        <TextView
+        <Button
+            android:id="@+id/receiveButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Send Frequency:"
-            android:textSize="16sp"
+            android:text="Receive (Start Server)"
             android:layout_marginEnd="8dp"/>
 
-        <Spinner
-            android:id="@+id/frequencySpinner"
+        <Button
+            android:id="@+id/sendButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:entries="@array/send_frequencies"/>
-
-        <Button
-            android:id="@+id/toggleAutoSendButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Start Auto Send"
-            android:layout_marginStart="16dp"/>
+            android:text="Send (Start Client)"
+            android:layout_marginStart="8dp"/>
     </LinearLayout>
-
 
     <TextView
         android:layout_width="match_parent"
@@ -85,25 +61,5 @@
             android:background="#e0e0e0"
             android:textColor="@android:color/black"/>
     </ScrollView>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <EditText
-            android:id="@+id/messageEditText"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Enter message"
-            android:inputType="text" />
-
-        <Button
-            android:id="@+id/sendButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Send" />
-    </LinearLayout>
 
 </LinearLayout>
