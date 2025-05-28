@@ -4,7 +4,10 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -12,11 +15,9 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.util.Log
-import android.widget.Button
-import android.widget.SeekBar
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.util.Random
@@ -30,6 +31,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private lateinit var receiveButton: Button
     private lateinit var sendButton: Button
     private lateinit var stopButton: Button
+    private lateinit var scanButton: Button
     private lateinit var frequencySeekBar: SeekBar
     private lateinit var frequencyLabel: TextView
 
@@ -38,8 +40,14 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private val autoSendHandler = Handler(Looper.getMainLooper())
     private var isAutoSending = false
     private var isReceiving = false
+    private var isScanning = false
     private var sendFrequencyMillis = 1000L // Default 1 second
     private var messageCount = 0
+
+    // Device discovery
+    private val discoveredDevices = mutableListOf<BluetoothDevice>()
+    private lateinit var deviceListAdapter: ArrayAdapter<String>
+    private var deviceSelectionDialog: AlertDialog? = null
 
     // Runnable for automatic data sending
     private val autoSendRunnable = object : Runnable {
@@ -66,6 +74,43 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                 autoSendHandler.postDelayed(this, sendFrequencyMillis)
             } else {
                 Log.d(TAG, "autoSendRunnable: isAutoSending is false, not rescheduling.")
+            }
+        }
+    }
+
+    // BroadcastReceiver for device discovery
+    private val receiver = object : BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
+        override fun onReceive(context: Context, intent: Intent) {
+            when(intent.action) {
+                BluetoothDevice.ACTION_FOUND -> {
+                    val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
+                    device?.let {
+                        Log.d(TAG, "Device found: ${it.name ?: "Unknown"} - ${it.address}")
+                        if (!discoveredDevices.contains(it)) {
+                            discoveredDevices.add(it)
+                            val deviceName = it.name ?: "Unknown Device"
+                            val deviceInfo = "$deviceName\n${it.address}"
+                            deviceListAdapter.add(deviceInfo)
+                            deviceListAdapter.notifyDataSetChanged()
+                        }
+                    }
+                }
+                BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                    Log.d(TAG, "Device discovery finished")
+                    isScanning = false
+                    updateButtonStates()
+                    statusTextView.text = "Status: Discovery completed (${discoveredDevices.size} devices found)"
+                }
+                BluetoothAdapter.ACTION_DISCOVERY_STARTED -> {
+                    Log.d(TAG, "Device discovery started")
+                    statusTextView.text = "Status: Scanning for devices..."
+                }
             }
         }
     }
@@ -131,6 +176,15 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         }
     }
 
+    private val requestDiscoverabilityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        Log.d(TAG, "requestDiscoverabilityLauncher: Discoverability result. Result code: ${result.resultCode}")
+        if (result.resultCode > 0) {
+            Toast.makeText(this, "Device is now discoverable as 'ECM Emitter' for ${result.resultCode} seconds", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "Device discoverability was denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -138,8 +192,10 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
         initializeViews()
         bluetoothService = BluetoothService(mainHandler)
+        setupDeviceDiscovery()
         requestPermissions()
         setupEventListeners()
+        registerReceiver()
     }
 
     private fun initializeViews() {
@@ -148,11 +204,25 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         receiveButton = findViewById(R.id.receiveButton)
         sendButton = findViewById(R.id.sendButton)
         stopButton = findViewById(R.id.stopButton)
+        scanButton = findViewById(R.id.scanButton)
         frequencySeekBar = findViewById(R.id.frequencySeekBar)
         frequencyLabel = findViewById(R.id.frequencyLabel)
 
         // Initialize frequency controls
         updateFrequencyLabel()
+    }
+
+    private fun setupDeviceDiscovery() {
+        deviceListAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf<String>())
+    }
+
+    private fun registerReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_FOUND)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED)
+        }
+        registerReceiver(receiver, filter)
     }
 
     private fun setupEventListeners() {
@@ -163,7 +233,12 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
         sendButton.setOnClickListener {
             Log.d(TAG, "sendButton clicked.")
-            startSendMode()
+            showScanDialog()
+        }
+
+        scanButton.setOnClickListener {
+            Log.d(TAG, "scanButton clicked.")
+            startDeviceDiscovery()
         }
 
         stopButton.setOnClickListener {
@@ -188,6 +263,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         frequencyLabel.text = "Send Frequency: ${String.format("%.1f", frequency)} Hz (${sendFrequencyMillis}ms)"
     }
 
+    @SuppressLint("MissingPermission")
     private fun startReceiveMode() {
         if (bluetoothAdapter?.isEnabled != true) {
             Toast.makeText(this, "Bluetooth is not enabled.", Toast.LENGTH_SHORT).show()
@@ -198,48 +274,115 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         isReceiving = true
         messageCount = 0
 
+        // Make device discoverable as "ECM Emitter"
+        val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300) // 5 minutes
+        }
+        requestDiscoverabilityLauncher.launch(discoverableIntent)
+
         bluetoothService.start()
-        statusTextView.text = "Status: Waiting to Receive..."
-        messagesTextView.text = "=== Receive Mode Started ===\n"
+        statusTextView.text = "Status: ECM Emitter - Waiting to Receive..."
+        messagesTextView.text = "=== ECM Emitter Mode Started ===\nDevice is discoverable as 'ECM Emitter'\nWaiting for connection...\n"
         updateButtonStates()
     }
 
-    private fun startSendMode() {
+    private fun showScanDialog() {
         if (bluetoothAdapter?.isEnabled != true) {
             Toast.makeText(this, "Bluetooth is not enabled.", Toast.LENGTH_SHORT).show()
             return
         }
 
+        // Clear previous discoveries
+        discoveredDevices.clear()
+        deviceListAdapter.clear()
+
+        val dialogView = layoutInflater.inflate(android.R.layout.simple_list_item_1, null)
+        val listView = ListView(this).apply {
+            adapter = deviceListAdapter
+        }
+
+        deviceSelectionDialog = AlertDialog.Builder(this)
+            .setTitle("Select ECM Emitter Device")
+            .setView(listView)
+            .setPositiveButton("Scan") { _, _ ->
+                startDeviceDiscovery()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val selectedDevice = discoveredDevices[position]
+            deviceSelectionDialog?.dismiss()
+            connectToDevice(selectedDevice)
+        }
+
+        deviceSelectionDialog?.show()
+
+        // Auto-start scanning
+        startDeviceDiscovery()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startDeviceDiscovery() {
+        if (bluetoothAdapter?.isEnabled != true) {
+            Toast.makeText(this, "Bluetooth is not enabled.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (isScanning) {
+            bluetoothAdapter?.cancelDiscovery()
+        }
+
+        discoveredDevices.clear()
+        deviceListAdapter.clear()
+        isScanning = true
+        updateButtonStates()
+
+        Log.d(TAG, "Starting device discovery...")
+        val discoveryStarted = bluetoothAdapter?.startDiscovery() ?: false
+
+        if (discoveryStarted) {
+            statusTextView.text = "Status: Scanning for ECM Emitter devices..."
+            Toast.makeText(this, "Scanning for devices...", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Failed to start device discovery", Toast.LENGTH_SHORT).show()
+            isScanning = false
+            updateButtonStates()
+        }
+    }
+
+    private fun connectToDevice(device: BluetoothDevice) {
         stopAllOperations()
         messageCount = 0
-        messagesTextView.text = "=== Send Mode Started ===\n"
+        messagesTextView.text = "=== Send Mode Started ===\nConnecting to ${device.name ?: "Unknown Device"}...\n"
 
-        @SuppressLint("MissingPermission")
-        val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter?.bondedDevices
-        if (!pairedDevices.isNullOrEmpty()) {
-            isAutoSending = true
-            val deviceToConnect = pairedDevices.first()
-            bluetoothService.connect(deviceToConnect)
-            statusTextView.text = "Status: Attempting to Send..."
-            updateButtonStates()
-        } else {
-            Toast.makeText(this, "No paired devices found. Pair devices first.", Toast.LENGTH_LONG).show()
-        }
+        isAutoSending = true
+        bluetoothService.connect(device)
+        statusTextView.text = "Status: Connecting to ${device.name ?: "Unknown Device"}..."
+        updateButtonStates()
     }
 
     private fun stopAllOperations() {
         isAutoSending = false
         isReceiving = false
         stopAutoSending()
+
+        // Stop discovery if running
+        if (isScanning) {
+            bluetoothAdapter?.cancelDiscovery()
+            isScanning = false
+        }
+
         bluetoothService.stop()
         statusTextView.text = "Status: Stopped"
         updateButtonStates()
     }
 
     private fun updateButtonStates() {
-        val isActive = isAutoSending || isReceiving
+        val isActive = isAutoSending || isReceiving || isScanning
         receiveButton.isEnabled = !isActive
         sendButton.isEnabled = !isActive
+        scanButton.isEnabled = !isActive && !isReceiving
         stopButton.isEnabled = isActive
         frequencySeekBar.isEnabled = !isActive
     }
@@ -284,6 +427,11 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy() called.")
+        try {
+            unregisterReceiver(receiver)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering receiver", e)
+        }
         stopAllOperations()
     }
 
@@ -301,10 +449,10 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     override fun onConnected(deviceName: String, deviceAddress: String) {
         Log.d(TAG, "onConnected() called. Device: $deviceName")
         if (isAutoSending) {
-            statusTextView.text = "Status: Sending to $deviceName"
+            statusTextView.text = "Status: Sending ECM data to $deviceName"
             autoSendHandler.post(autoSendRunnable)
         } else if (isReceiving) {
-            statusTextView.text = "Status: Receiving from $deviceName"
+            statusTextView.text = "Status: ECM Emitter - Connected to $deviceName"
         }
         Toast.makeText(this, "Connected to $deviceName!", Toast.LENGTH_SHORT).show()
     }
@@ -331,7 +479,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     override fun onListenStarted() {
         Log.d(TAG, "onListenStarted() called.")
         if (isReceiving) {
-            statusTextView.text = "Status: Listening for connections (Ready to Receive)"
+            statusTextView.text = "Status: ECM Emitter - Ready to Accept Connections"
         }
     }
 

@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
+import android.os.Bundle
 import android.os.Handler
 import android.os.Message
 import android.util.Log
@@ -31,7 +32,6 @@ const val MESSAGE_DISCONNECTED = 4
 const val MESSAGE_CONNECTING = 5
 const val MESSAGE_LISTEN_STARTED = 6
 
-
 class BluetoothService(
     private val handler: Handler // Handler connected to the main looper
 ) {
@@ -43,7 +43,7 @@ class BluetoothService(
     private var connectedThread: ConnectedThread? = null
 
     @Volatile
-    var currentState: Int = STATE_NONE // Changed to var so MainActivity can read it
+    var currentState: Int = STATE_NONE
 
     companion object {
         const val STATE_NONE = 0        // We're doing nothing
@@ -74,6 +74,9 @@ class BluetoothService(
             acceptThread?.start()
             Log.d(TAG, "start(): AcceptThread created and started.")
             updateState(STATE_LISTEN)
+
+            // Notify UI that listening has started
+            handler.obtainMessage(MESSAGE_LISTEN_STARTED).sendToTarget()
         } else {
             Log.d(TAG, "start(): AcceptThread already running, not restarting.")
         }
@@ -89,7 +92,6 @@ class BluetoothService(
         connectedThread = null
         Log.d(TAG, "connect(): connectedThread cancelled and nulled.")
 
-
         // Cancel any thread attempting to make a connection
         if (currentState == STATE_CONNECTING) {
             connectThread?.cancel()
@@ -97,42 +99,49 @@ class BluetoothService(
             Log.d(TAG, "connect(): Existing connectThread cancelled and nulled.")
         }
 
+        // Notify UI that we're starting to connect
+        val deviceName = device.name ?: "Unknown Device"
+        val msg = handler.obtainMessage(MESSAGE_CONNECTING, deviceName)
+        val bundle = Bundle()
+        bundle.putString("device_address", device.address)
+        msg.data = bundle
+        msg.sendToTarget()
+
         // Start the thread to connect with the given device
         connectThread = ConnectThread(device)
         connectThread?.start()
-        Log.d(TAG, "connect(): ConnectThread created and started for ${device.name}.")
+        Log.d(TAG, "connect(): ConnectThread created and started for $deviceName.")
         updateState(STATE_CONNECTING)
     }
 
     @Synchronized
+    @SuppressLint("MissingPermission")
     fun connected(socket: BluetoothSocket, device: BluetoothDevice) {
-        Log.d(TAG, "connected() called. Socket established with ${device.name}.")
+        val deviceName = device.name ?: "Unknown Device"
+        Log.d(TAG, "connected() called. Socket established with $deviceName.")
 
         // Cancel the thread that completed the connection
         connectThread?.cancel()
         connectThread = null
         Log.d(TAG, "connected(): connectThread cancelled and nulled after successful connection.")
 
-
         // Cancel any accept thread because we only want one connection
-        // (This is important for a simple point-to-point connection)
         acceptThread?.cancel()
         acceptThread = null
         Log.d(TAG, "connected(): acceptThread cancelled and nulled (single connection mode).")
-
 
         // Start the thread to manage the connection and perform transmissions
         connectedThread = ConnectedThread(socket)
         connectedThread?.start()
         Log.d(TAG, "connected(): ConnectedThread created and started for data transfer.")
 
-
-        // Send the name of the connected device back to the UI Activity
-        // Note: For address, you might need to pass it explicitly if needed by UI
-        handler.obtainMessage(MESSAGE_CONNECTED, -1, -1, device.name)
-            .sendToTarget()
-        Log.d(TAG, "connected(): MESSAGE_CONNECTED sent to handler for device: ${device.name}.")
-
+        // Send the name and address of the connected device back to the UI Activity
+        val msg = handler.obtainMessage(MESSAGE_CONNECTED, deviceName)
+        val bundle = Bundle()
+        bundle.putString("device_address", device.address)
+        msg.data = bundle
+        msg.sendToTarget()
+        Log.d(TAG, "connected(): MESSAGE_CONNECTED sent to handler for device: $deviceName.")
 
         updateState(STATE_CONNECTED)
     }
@@ -145,16 +154,13 @@ class BluetoothService(
         connectedThread = null
         Log.d(TAG, "stop(): connectedThread cancelled and nulled.")
 
-
         connectThread?.cancel()
         connectThread = null
         Log.d(TAG, "stop(): connectThread cancelled and nulled.")
 
-
         acceptThread?.cancel()
         acceptThread = null
         Log.d(TAG, "stop(): acceptThread cancelled and nulled.")
-
 
         updateState(STATE_NONE)
         Log.d(TAG, "stop(): Service stopped. State set to STATE_NONE.")
@@ -180,7 +186,6 @@ class BluetoothService(
         val oldState = currentState
         currentState = state
         Log.d(TAG, "updateState(): Changing state from $oldState to $currentState")
-        // Could send state updates to UI here if needed, but current setup uses MESSAGE_CONNECTED etc.
     }
 
     /**
@@ -190,78 +195,77 @@ class BluetoothService(
      */
     private inner class AcceptThread : Thread() {
         private val mmServerSocket: BluetoothServerSocket? by lazy(LazyThreadSafetyMode.NONE) {
-            bluetoothAdapter?.listenUsingRfcommWithServiceRecord(Constants.APP_NAME, Constants.MY_UUID)
+            bluetoothAdapter?.listenUsingRfcommWithServiceRecord(Constants.ECM_SERVICE_NAME, Constants.MY_UUID)
         }
 
-        @Volatile private var isRunning = true
+        @Volatile
+        private var isRunning = true
 
         override fun run() {
-            Log.d(TAG, "AcceptThread: BEGIN mAcceptThread $this")
-            name = "AcceptThread"
+            Log.d(TAG, "AcceptThread: BEGIN mAcceptThread $this - Service: ${Constants.ECM_SERVICE_NAME}")
+            name = "AcceptThread-ECM"
             var socket: BluetoothSocket? = null
 
             // Listen to the server socket if not connected
-            // Continue running as long as isRunning is true AND we are not yet connected
             while (isRunning && currentState != STATE_CONNECTED) {
                 try {
+                    Log.d(TAG, "AcceptThread: ECM Service listening on UUID: ${Constants.MY_UUID}")
                     Log.d(TAG, "AcceptThread: Server socket listening... (currentState: $currentState)")
+
                     // This is a blocking call and will only return on a
                     // successful connection or an exception
                     socket = mmServerSocket?.accept()
-                    Log.d(TAG, "AcceptThread: Accepted connection from ${socket?.remoteDevice?.name}.")
+
+                    val remoteName = socket?.remoteDevice?.name ?: "Unknown Device"
+                    val remoteAddress = socket?.remoteDevice?.address ?: "Unknown Address"
+                    Log.d(TAG, "AcceptThread: Accepted connection from $remoteName ($remoteAddress)")
+
                 } catch (e: IOException) {
                     Log.e(TAG, "AcceptThread: Socket's accept() method failed", e)
-                    connectionFailed("Server accept failed: ${e.message}")
-                    isRunning = false // Stop listening on error
+                    connectionFailed("ECM Server accept failed: ${e.message}")
+                    isRunning = false
                 }
 
                 // If a connection was accepted
                 socket?.let {
-                    synchronized(this@BluetoothService) { // Synchronize on the outer class instance
+                    synchronized(this@BluetoothService) {
                         when (currentState) {
                             STATE_LISTEN, STATE_CONNECTING -> {
-                                // Situation normal. Start the connected thread.
-                                Log.d(TAG, "AcceptThread: Connection accepted, state is LISTEN or CONNECTING. Starting connected thread.")
+                                Log.d(TAG, "AcceptThread: Connection accepted, starting connected thread.")
                                 connected(it, it.remoteDevice)
                             }
                             STATE_NONE, STATE_CONNECTED -> {
-                                // Either not ready or already connected. Terminate new socket.
-                                Log.w(TAG, "AcceptThread: Connection accepted, but state is NONE or ALREADY CONNECTED. Closing unwanted socket.")
+                                Log.w(TAG, "AcceptThread: Connection rejected - state is $currentState. Closing socket.")
                                 try {
                                     it.close()
                                 } catch (e: IOException) {
                                     Log.e(TAG, "AcceptThread: Could not close unwanted socket", e)
                                 }
                             }
-                            else -> {
-                                Log.d(TAG, "AcceptThread: Connection accepted, unknown state: $currentState. Closing socket.")
-                                try {
-                                    it.close()
-                                } catch (e: IOException) {
-                                    Log.e(TAG, "AcceptThread: Could not close unwanted socket in unknown state", e)
-                                }
-                            }
+
+                            else -> {}
                         }
                     }
                 }
             }
+
             Log.d(TAG, "AcceptThread: END mAcceptThread loop. isRunning: $isRunning, currentState: $currentState")
             try {
                 mmServerSocket?.close()
-                Log.d(TAG, "AcceptThread: ServerSocket closed at end of run.")
+                Log.d(TAG, "AcceptThread: ECM ServerSocket closed.")
             } catch (e: IOException) {
-                Log.e(TAG, "AcceptThread: Error closing server socket in run() end.", e)
+                Log.e(TAG, "AcceptThread: Error closing ECM server socket.", e)
             }
         }
 
         fun cancel() {
-            Log.d(TAG, "AcceptThread: cancel() called for $this")
-            isRunning = false // Set flag to stop the loop
+            Log.d(TAG, "AcceptThread: cancel() called for ECM service")
+            isRunning = false
             try {
                 mmServerSocket?.close()
-                Log.d(TAG, "AcceptThread: ServerSocket explicitly closed by cancel().")
+                Log.d(TAG, "AcceptThread: ECM ServerSocket explicitly closed by cancel().")
             } catch (e: IOException) {
-                Log.e(TAG, "AcceptThread: Could not close the accept socket during cancel()", e)
+                Log.e(TAG, "AcceptThread: Could not close the ECM accept socket during cancel()", e)
             }
         }
     }
@@ -271,7 +275,7 @@ class BluetoothService(
      * with a device. It runs straight through; the connection either
      * succeeds or fails.
      */
-    @SuppressLint("MissingPermission") // Permissions handled in MainActivity
+    @SuppressLint("MissingPermission")
     private inner class ConnectThread(private val device: BluetoothDevice) : Thread() {
 
         private val mmSocket: BluetoothSocket? by lazy(LazyThreadSafetyMode.NONE) {
@@ -279,51 +283,49 @@ class BluetoothService(
         }
 
         override fun run() {
-            Log.d(TAG, "ConnectThread: BEGIN mConnectThread for ${device.name}")
-            name = "ConnectThread"
+            val deviceName = device.name ?: "Unknown Device"
+            Log.d(TAG, "ConnectThread: BEGIN mConnectThread for $deviceName")
+            name = "ConnectThread-$deviceName"
 
             // Always cancel discovery because it will slow down a connection
             bluetoothAdapter?.cancelDiscovery()
             Log.d(TAG, "ConnectThread: Bluetooth discovery cancelled.")
 
-
             // Make a connection to the BluetoothSocket
             mmSocket?.let { socket ->
                 try {
-                    Log.d(TAG, "ConnectThread: Attempting to connect to ${device.name}...")
-                    // This is a blocking call and will only return on a
-                    // successful connection or an exception
+                    Log.d(TAG, "ConnectThread: Attempting to connect to ECM service on $deviceName...")
                     socket.connect()
-                    Log.d(TAG, "ConnectThread: Successfully connected to ${device.name}")
+                    Log.d(TAG, "ConnectThread: Successfully connected to ECM service on $deviceName")
                 } catch (e: IOException) {
-                    Log.e(TAG, "ConnectThread: Could not connect client socket to ${device.name}", e)
+                    Log.e(TAG, "ConnectThread: Could not connect to ECM service on $deviceName", e)
                     try {
                         socket.close()
                         Log.d(TAG, "ConnectThread: Closed client socket after connection failure.")
                     } catch (e2: IOException) {
                         Log.e(TAG, "ConnectThread: Could not close client socket after connection failure", e2)
                     }
-                    connectionFailed("Client connect failed: ${e.message}")
-                    return // Exit run method on failure
+                    connectionFailed("Could not connect to ECM Emitter '$deviceName': ${e.message}")
+                    return
                 }
 
                 // Reset the ConnectThread because we're done
                 synchronized(this@BluetoothService) {
                     connectThread = null
-                    Log.d(TAG, "ConnectThread: connectThread nulled after successful connection (or failure).")
+                    Log.d(TAG, "ConnectThread: connectThread nulled after connection attempt.")
                 }
 
                 // Start the connected thread
                 connected(socket, device)
             } ?: run {
-                Log.e(TAG, "ConnectThread: mmSocket was null. Cannot connect.")
-                connectionFailed("Client socket creation failed.")
+                Log.e(TAG, "ConnectThread: mmSocket was null for $deviceName. Cannot connect.")
+                connectionFailed("Could not create socket for ECM Emitter '$deviceName'")
             }
-            Log.d(TAG, "ConnectThread: END mConnectThread for ${device.name}")
+            Log.d(TAG, "ConnectThread: END mConnectThread for $deviceName")
         }
 
         fun cancel() {
-            Log.d(TAG, "ConnectThread: cancel() called for $this")
+            Log.d(TAG, "ConnectThread: cancel() called")
             try {
                 mmSocket?.close()
                 Log.d(TAG, "ConnectThread: Client socket explicitly closed by cancel().")
@@ -343,64 +345,61 @@ class BluetoothService(
         private val mmOutStream: OutputStream = mmSocket.outputStream
         private val mmBuffer: ByteArray = ByteArray(1024)
 
+        @SuppressLint("MissingPermission")
         override fun run() {
-            Log.d(TAG, "ConnectedThread: BEGIN mConnectedThread for socket: ${mmSocket.remoteDevice.name}")
-            var numBytes: Int // bytes returned from read()
+            val deviceName = mmSocket.remoteDevice.name ?: "Unknown Device"
+            Log.d(TAG, "ConnectedThread: BEGIN mConnectedThread for ECM connection with: $deviceName")
+            var numBytes: Int
 
             // Keep listening to the InputStream while connected
-            while (true) { // This loop must continue to read incoming data
+            while (true) {
                 try {
-                    Log.d(TAG, "ConnectedThread: Waiting to read from InputStream...")
-                    // Read from the InputStream
+                    Log.d(TAG, "ConnectedThread: Waiting to read ECM data from $deviceName...")
                     numBytes = mmInStream.read(mmBuffer)
-                    Log.d(TAG, "ConnectedThread: Read $numBytes bytes from InputStream.")
-
+                    Log.d(TAG, "ConnectedThread: Read $numBytes bytes of ECM data from $deviceName.")
 
                     // Send the obtained bytes to the UI Activity via the Handler
                     handler.obtainMessage(MESSAGE_READ, numBytes, -1, mmBuffer)
                         .sendToTarget()
-                    Log.d(TAG, "ConnectedThread: MESSAGE_READ sent to handler with $numBytes bytes.")
-
+                    Log.d(TAG, "ConnectedThread: ECM data MESSAGE_READ sent to handler with $numBytes bytes.")
 
                 } catch (e: IOException) {
-                    Log.e(TAG, "ConnectedThread: Input stream was disconnected or error occurred", e)
-                    connectionLost() // Handle disconnection
-                    break // Exit the loop on disconnection
+                    Log.e(TAG, "ConnectedThread: ECM data stream disconnected from $deviceName", e)
+                    connectionLost()
+                    break
                 }
             }
-            Log.d(TAG, "ConnectedThread: END mConnectedThread")
+            Log.d(TAG, "ConnectedThread: END mConnectedThread for $deviceName")
             try {
                 mmSocket.close()
-                Log.d(TAG, "ConnectedThread: Socket closed at end of run.")
+                Log.d(TAG, "ConnectedThread: ECM socket closed.")
             } catch (e: IOException) {
-                Log.e(TAG, "ConnectedThread: Error closing socket at end of run.", e)
+                Log.e(TAG, "ConnectedThread: Error closing ECM socket.", e)
             }
         }
 
         /**
-         * Write to the connected OutStream.
-         * @param buffer The bytes to write
+         * Write ECM data to the connected OutStream.
          */
         fun write(buffer: ByteArray) {
             try {
-                Log.d(TAG, "ConnectedThread: Attempting to write ${buffer.size} bytes to OutputStream.")
+                Log.d(TAG, "ConnectedThread: Sending ${buffer.size} bytes of ECM data...")
                 mmOutStream.write(buffer)
-                // Optionally, flush to ensure data is sent immediately, though usually handled by OS
-                // mmOutStream.flush()
-                Log.d(TAG, "ConnectedThread: Successfully wrote ${buffer.size} bytes.")
+                mmOutStream.flush() // Ensure ECM data is sent immediately
+                Log.d(TAG, "ConnectedThread: Successfully sent ${buffer.size} bytes of ECM data.")
             } catch (e: IOException) {
-                Log.e(TAG, "ConnectedThread: Error during write to output stream", e)
-                connectionLost() // Handle disconnection on write error
+                Log.e(TAG, "ConnectedThread: Error sending ECM data", e)
+                connectionLost()
             }
         }
 
         fun cancel() {
-            Log.d(TAG, "ConnectedThread: cancel() called for $this")
+            Log.d(TAG, "ConnectedThread: cancel() called")
             try {
                 mmSocket.close()
-                Log.d(TAG, "ConnectedThread: Connected socket explicitly closed by cancel().")
+                Log.d(TAG, "ConnectedThread: ECM connected socket explicitly closed by cancel().")
             } catch (e: IOException) {
-                Log.e(TAG, "ConnectedThread: Could not close the connect socket during cancel()", e)
+                Log.e(TAG, "ConnectedThread: Could not close the ECM connect socket during cancel()", e)
             }
         }
     }
@@ -409,11 +408,9 @@ class BluetoothService(
      * Indicate that the connection attempt failed.
      */
     private fun connectionFailed(errorMessage: String) {
-        Log.e(TAG, "connectionFailed(): Connection failed with error: $errorMessage")
+        Log.e(TAG, "connectionFailed(): ECM connection failed: $errorMessage")
         updateState(STATE_NONE)
-        // Send a failure message back to the Activity
-        handler.obtainMessage(MESSAGE_CONNECTION_FAILED, errorMessage)
-            .sendToTarget()
+        handler.obtainMessage(MESSAGE_CONNECTION_FAILED, errorMessage).sendToTarget()
         Log.d(TAG, "connectionFailed(): MESSAGE_CONNECTION_FAILED sent to handler.")
     }
 
@@ -421,9 +418,8 @@ class BluetoothService(
      * Indicate that the connection was lost.
      */
     private fun connectionLost() {
-        Log.w(TAG, "connectionLost(): Connection unexpectedly lost.")
+        Log.w(TAG, "connectionLost(): ECM connection unexpectedly lost.")
         updateState(STATE_NONE)
-        // Send a disconnected message back to the Activity
         handler.obtainMessage(MESSAGE_DISCONNECTED).sendToTarget()
         Log.d(TAG, "connectionLost(): MESSAGE_DISCONNECTED sent to handler.")
     }

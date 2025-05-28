@@ -25,26 +25,28 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_horizontal"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="8dp">
 
         <Button
             android:id="@+id/receiveButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Receive\n(Server)"
-            android:layout_marginEnd="4dp"
-            android:textSize="12sp" />
+            android:text="ECM Emitter\n(Server)"
+            android:layout_marginEnd="2dp"
+            android:textSize="11sp"
+            android:backgroundTint="#4CAF50" />
 
         <Button
             android:id="@+id/sendButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Send\n(Client)"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="4dp"
-            android:textSize="12sp" />
+            android:text="Connect &amp; Send\n(Client)"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:textSize="11sp"
+            android:backgroundTint="#2196F3" />
 
         <Button
             android:id="@+id/stopButton"
@@ -52,12 +54,23 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Stop"
-            android:layout_marginStart="4dp"
+            android:layout_marginStart="2dp"
             android:enabled="false"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:backgroundTint="#d32f2f" />
 
     </LinearLayout>
+
+    <!-- Scan Button -->
+    <Button
+        android:id="@+id/scanButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔍 Scan for ECM Emitter Devices"
+        android:layout_marginBottom="16dp"
+        android:textSize="14sp"
+        android:backgroundTint="#FF9800"
+        android:textColor="@android:color/white" />
 
     <!-- Frequency Control -->
     <LinearLayout
@@ -135,7 +148,7 @@
             android:id="@+id/messagesTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Ready to start communication..."
+            android:text="Ready to start communication...\n\n📱 Device A: Click 'ECM Emitter' to become discoverable\n📱 Device B: Click 'Connect &amp; Send' to scan and connect"
             android:padding="8dp"
             android:textColor="@android:color/black"
             android:textSize="12sp"
@@ -143,7 +156,7 @@
 
     </ScrollView>
 
-    <!-- Statistics (optional) -->
+    <!-- Statistics -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -155,7 +168,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Data Rate: Real-time"
+            android:text="📡 ECM Data Stream"
             android:textSize="12sp"
             android:textColor="@android:color/darker_gray" />
 
