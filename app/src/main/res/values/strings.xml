@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">Basic</string>
+
+    <string-array name="send_frequencies">
+        <item>1 Second</item>
+        <item>5 Seconds</item>
+        <item>10 Seconds</item>
+    </string-array>
+
 </resources>

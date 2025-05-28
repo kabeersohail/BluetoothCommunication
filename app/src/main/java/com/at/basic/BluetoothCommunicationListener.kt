@@ -45,7 +45,7 @@ class BluetoothService(
     // This is the current connection state.
     // Consider using an enum for more complex states.
     @Volatile
-    private var currentState: Int = STATE_NONE
+    var currentState: Int = STATE_NONE
 
     companion object {
         const val STATE_NONE = 0        // We're doing nothing
