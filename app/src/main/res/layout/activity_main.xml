@@ -32,7 +32,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="ECM Emitter\n(Server)"
+            android:text="🚗 ECM Emitter\n(Emit Data)"
             android:layout_marginEnd="2dp"
             android:textSize="11sp"
             android:backgroundTint="#4CAF50" />
@@ -42,7 +42,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Connect &amp; Send\n(Client)"
+            android:text="📱 Connect to ECM\n(Receive Data)"
             android:layout_marginStart="2dp"
             android:layout_marginEnd="2dp"
             android:textSize="11sp"
@@ -85,7 +85,7 @@
             android:id="@+id/frequencyLabel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Send Frequency: 1.0 Hz (1000ms)"
+            android:text="ECM Data Emission Frequency: 1.0 Hz (1000ms)"
             android:textSize="14sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp"
@@ -129,7 +129,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Messages:"
+        android:text="ECM Data Stream:"
         android:textSize="16sp"
         android:textStyle="bold"
         android:layout_marginBottom="8dp"
@@ -148,7 +148,7 @@
             android:id="@+id/messagesTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Ready to start communication...\n\n📱 Device A: Click 'ECM Emitter' to become discoverable\n📱 Device B: Click 'Connect &amp; Send' to scan and connect"
+            android:text="Ready to start ECM communication...\n\n🚗 Device A (ECM): Click 'ECM Emitter' to become discoverable and emit engine data\n📱 Device B (Client): Click 'Connect to ECM' to scan and receive engine data"
             android:padding="8dp"
             android:textColor="@android:color/black"
             android:textSize="12sp"
@@ -168,7 +168,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="📡 ECM Data Stream"
+            android:text="🚗 ECM Data Emulator"
             android:textSize="12sp"
             android:textColor="@android:color/darker_gray" />
 

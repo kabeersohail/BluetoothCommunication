@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                 Log.d(TAG, "autoSendRunnable: Generated ECM data: $ecmData")
                 bluetoothService.write(ecmData.toByteArray())
                 messageCount++
-                messagesTextView.append("\n[${messageCount}] Me (Sent): $ecmData")
+                messagesTextView.append("\n[${messageCount}] ECM Emitted: $ecmData")
 
                 // Auto-scroll to bottom
                 runOnUiThread {
@@ -271,7 +271,8 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         }
 
         stopAllOperations()
-        isReceiving = true
+        isReceiving = false  // Server doesn't "receive" - it emits!
+        isAutoSending = true  // Server auto-sends ECM data
         messageCount = 0
 
         // Make device discoverable as "ECM Emitter"
@@ -281,10 +282,11 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         requestDiscoverabilityLauncher.launch(discoverableIntent)
 
         bluetoothService.start()
-        statusTextView.text = "Status: ECM Emitter - Waiting to Receive..."
-        messagesTextView.text = "=== ECM Emitter Mode Started ===\nDevice is discoverable as 'ECM Emitter'\nWaiting for connection...\n"
+        statusTextView.text = "Status: ECM Emitter - Waiting for Client Connection..."
+        messagesTextView.text = "=== ECM Emitter Mode Started ===\nDevice is discoverable as 'ECM Emitter'\nWaiting for client to connect...\nWill start emitting ECM data once connected.\n"
         updateButtonStates()
     }
+
 
     private fun showScanDialog() {
         if (bluetoothAdapter?.isEnabled != true) {
@@ -354,11 +356,12 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private fun connectToDevice(device: BluetoothDevice) {
         stopAllOperations()
         messageCount = 0
-        messagesTextView.text = "=== Send Mode Started ===\nConnecting to ${device.name ?: "Unknown Device"}...\n"
+        messagesTextView.text = "=== Client Mode Started ===\nConnecting to ECM Emitter: ${device.name ?: "Unknown Device"}...\nWaiting to receive ECM data...\n"
 
-        isAutoSending = true
+        isAutoSending = false  // Client doesn't send, it receives
+        isReceiving = true     // Client receives ECM data
         bluetoothService.connect(device)
-        statusTextView.text = "Status: Connecting to ${device.name ?: "Unknown Device"}..."
+        statusTextView.text = "Status: Connecting to ECM Emitter: ${device.name ?: "Unknown Device"}..."
         updateButtonStates()
     }
 
@@ -382,7 +385,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         val isActive = isAutoSending || isReceiving || isScanning
         receiveButton.isEnabled = !isActive
         sendButton.isEnabled = !isActive
-        scanButton.isEnabled = !isActive && !isReceiving
+        scanButton.isEnabled = !isActive && !isAutoSending  // Can't scan when emitting
         stopButton.isEnabled = isActive
         frequencySeekBar.isEnabled = !isActive
     }
@@ -439,7 +442,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     override fun onMessageReceived(message: String) {
         Log.d(TAG, "onMessageReceived() called. Message: '$message'")
         messageCount++
-        messagesTextView.append("\n[${messageCount}] Other (Received): $message")
+        messagesTextView.append("\n[${messageCount}] ECM Data Received: $message")
 
         // Auto-scroll to bottom
         val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
@@ -449,12 +452,15 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     override fun onConnected(deviceName: String, deviceAddress: String) {
         Log.d(TAG, "onConnected() called. Device: $deviceName")
         if (isAutoSending) {
-            statusTextView.text = "Status: Sending ECM data to $deviceName"
+            // Server mode - start emitting ECM data
+            statusTextView.text = "Status: ECM Emitter - Sending data to $deviceName"
             autoSendHandler.post(autoSendRunnable)
+            Toast.makeText(this, "Client connected! Starting ECM data emission...", Toast.LENGTH_SHORT).show()
         } else if (isReceiving) {
-            statusTextView.text = "Status: ECM Emitter - Connected to $deviceName"
+            // Client mode - ready to receive ECM data
+            statusTextView.text = "Status: Client - Receiving ECM data from $deviceName"
+            Toast.makeText(this, "Connected to ECM Emitter! Receiving data...", Toast.LENGTH_SHORT).show()
         }
-        Toast.makeText(this, "Connected to $deviceName!", Toast.LENGTH_SHORT).show()
     }
 
     override fun onConnectionFailed(error: String) {
@@ -473,13 +479,17 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
     override fun onConnecting(deviceName: String, deviceAddress: String) {
         Log.d(TAG, "onConnecting() called. Device: $deviceName")
-        statusTextView.text = "Status: Connecting to $deviceName..."
+        if (isAutoSending) {
+            statusTextView.text = "Status: ECM Emitter - Client connecting..."
+        } else {
+            statusTextView.text = "Status: Connecting to ECM Emitter: $deviceName..."
+        }
     }
 
     override fun onListenStarted() {
         Log.d(TAG, "onListenStarted() called.")
-        if (isReceiving) {
-            statusTextView.text = "Status: ECM Emitter - Ready to Accept Connections"
+        if (isAutoSending) {  // Changed from isReceiving to isAutoSending
+            statusTextView.text = "Status: ECM Emitter - Ready to Accept Client Connections"
         }
     }
 
