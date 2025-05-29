@@ -26,6 +26,17 @@
             android:textColor="@android:color/white"
             android:gravity="center" />
 
+        <!-- Unit Toggle Button -->
+        <Button
+            android:id="@+id/unitToggleButton"
+            android:layout_width="match_parent"
+            android:layout_height="45dp"
+            android:text="📏 Metric (KMph)"
+            android:layout_marginBottom="16dp"
+            android:textSize="14sp"
+            android:backgroundTint="#9B59B6"
+            android:textColor="@android:color/white" />
+
         <!-- ECM Configuration Section -->
         <LinearLayout
             android:layout_width="match_parent"

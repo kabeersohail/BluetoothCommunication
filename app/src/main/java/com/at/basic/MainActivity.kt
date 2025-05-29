@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private lateinit var speedSeekBar: SeekBar
     private lateinit var speedDynamicCheckBox: CheckBox
     private lateinit var speedValueText: TextView
+    private lateinit var unitToggleButton: Button
 
     // Dashboard Display
     private lateinit var dashSpeedText: TextView
@@ -78,6 +79,19 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private var userInitialEngineHours: Double = 0.0
     private var userInitialOdometer: Double = 0.0
     private var isSpeedDynamic: Boolean = true
+
+    // Real-time value tracking
+    private var realTimeSpeedOverride: Int? = null
+    private var realTimeRpmOverride: Int? = null
+
+    // Flags to prevent auto-updates when user is editing
+    private var isUserEditingOdometer = false
+    private var isUserEditingEngineHours = false
+    private var isUserEditingRpm = false
+    private var isUserEditingVin = false
+
+    // Unit system tracking
+    private var isMetricSystem = true // true = KMph/KM, false = MPH/Miles
 
     // Runnable for automatic data sending
     private val autoSendRunnable = object : Runnable {
@@ -301,6 +315,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         speedSeekBar = findViewById(R.id.speedSeekBar)
         speedDynamicCheckBox = findViewById(R.id.speedDynamicCheckBox)
         speedValueText = findViewById(R.id.speedValueText)
+        unitToggleButton = findViewById(R.id.unitToggleButton)
 
         // Dashboard
         dashSpeedText = findViewById(R.id.dashSpeedText)
@@ -312,6 +327,9 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
         // Initialize frequency controls
         updateFrequencyLabel()
+
+        // Initialize unit toggle button
+        updateUnitDisplay()
     }
 
     private fun initializeUserValues() {
@@ -328,7 +346,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         engineHoursEditText.setText(userInitialEngineHours.toString())
         odometerEditText.setText(userInitialOdometer.toInt().toString())
         speedSeekBar.progress = userInitialSpeed
-        speedValueText.text = "$userInitialSpeed km/h"
+        updateSpeedDisplay()
 
         // Initialize runtime values
         vin = userVin
@@ -386,6 +404,10 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             toggleDeviceScanner()
         }
 
+        unitToggleButton.setOnClickListener {
+            toggleUnits()
+        }
+
         frequencySeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 // Map progress (0-100) to frequency (100ms - 5000ms)
@@ -402,22 +424,214 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             speedSeekBar.isEnabled = !isChecked
             if (!isChecked) {
                 currentSpeed = speedSeekBar.progress
-                speedValueText.text = "$currentSpeed km/h"
+                realTimeSpeedOverride = currentSpeed
+                updateSpeedDisplay()
+                updateDashboard()
+            } else {
+                realTimeSpeedOverride = null
             }
         }
 
         speedSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser && !isSpeedDynamic) {
+                if (fromUser) {
+                    // Always allow real-time speed changes
                     currentSpeed = progress
-                    speedValueText.text = "$currentSpeed km/h"
+                    realTimeSpeedOverride = progress
+                    updateSpeedDisplay()
+
+                    // Calculate corresponding RPM based on speed
+                    calculateRpmFromSpeed(progress)
+
                     updateDashboard()
+
+                    Log.d(TAG, "Real-time speed change: $progress ${getSpeedUnit()}, calculated RPM: $currentRPM")
                 }
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
+        // Real-time RPM editing with TextWatcher
+        rpmEditText.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (!isUserEditingRpm) return
+                val newRpm = s.toString().toIntOrNull()
+                if (newRpm != null && newRpm >= 0) {
+                    realTimeRpmOverride = newRpm
+                    currentRPM = newRpm
+                    updateDashboard()
+                    Log.d(TAG, "Real-time RPM change: $newRpm")
+                }
+            }
+        })
+
+        rpmEditText.setOnFocusChangeListener { _, hasFocus ->
+            isUserEditingRpm = hasFocus
+            if (!hasFocus) {
+                // Final validation when focus is lost
+                val newRpm = rpmEditText.text.toString().toIntOrNull()
+                if (newRpm != null && newRpm >= 0) {
+                    realTimeRpmOverride = newRpm
+                    currentRPM = newRpm
+                    updateDashboard()
+                }
+            }
+        }
+
+        // Real-time VIN editing with TextWatcher
+        vinEditText.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (!isUserEditingVin) return
+                val newVin = s.toString()
+                if (newVin.isNotEmpty()) {
+                    vin = newVin
+                    userVin = newVin
+                    updateDashboard()
+                    Log.d(TAG, "Real-time VIN change: $newVin")
+                }
+            }
+        })
+
+        vinEditText.setOnFocusChangeListener { _, hasFocus ->
+            isUserEditingVin = hasFocus
+        }
+
+        // Real-time Engine Hours editing with TextWatcher
+        engineHoursEditText.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (!isUserEditingEngineHours) return
+                val newEngineHours = s.toString().toDoubleOrNull()
+                if (newEngineHours != null && newEngineHours >= 0) {
+                    engineHours = newEngineHours
+                    updateDashboard()
+                    Log.d(TAG, "Real-time Engine Hours change: $newEngineHours")
+                }
+            }
+        })
+
+        engineHoursEditText.setOnFocusChangeListener { _, hasFocus ->
+            isUserEditingEngineHours = hasFocus
+        }
+
+        // Real-time Odometer editing with TextWatcher
+        odometerEditText.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (!isUserEditingOdometer) return
+                val newOdometer = s.toString().toDoubleOrNull()
+                if (newOdometer != null && newOdometer >= 0) {
+                    odometer = newOdometer
+                    updateDashboard()
+                    Log.d(TAG, "Real-time Odometer change: $newOdometer")
+                }
+            }
+        })
+
+        odometerEditText.setOnFocusChangeListener { _, hasFocus ->
+            isUserEditingOdometer = hasFocus
+        }
+    }
+
+    private fun toggleUnits() {
+        isMetricSystem = !isMetricSystem
+
+        // Convert current speed
+        if (isMetricSystem) {
+            // Converting from MPH to KMph
+            currentSpeed = (currentSpeed * 1.60934).toInt()
+            speedSeekBar.progress = currentSpeed
+
+            // Convert odometer from miles to km
+            if (!isUserEditingOdometer) {
+                odometer *= 1.60934
+                odometerEditText.setText(odometer.toInt().toString())
+            }
+
+            Toast.makeText(this, "Switched to Metric (KMph/KM)", Toast.LENGTH_SHORT).show()
+        } else {
+            // Converting from KMph to MPH
+            currentSpeed = (currentSpeed / 1.60934).toInt()
+            speedSeekBar.progress = currentSpeed
+
+            // Convert odometer from km to miles
+            if (!isUserEditingOdometer) {
+                odometer /= 1.60934
+                odometerEditText.setText(odometer.toInt().toString())
+            }
+
+            Toast.makeText(this, "Switched to Imperial (MPH/Miles)", Toast.LENGTH_SHORT).show()
+        }
+
+        realTimeSpeedOverride = currentSpeed
+        updateUnitDisplay()
+        updateSpeedDisplay()
+        updateDashboard()
+
+        Log.d(TAG, "Unit system changed to: ${if (isMetricSystem) "Metric" else "Imperial"}")
+    }
+
+    private fun updateUnitDisplay() {
+        unitToggleButton.text = if (isMetricSystem) "📏 Metric (KMph)" else "📏 Imperial (MPH)"
+
+        // Update speed seekbar max based on unit system
+        speedSeekBar.max = if (isMetricSystem) 200 else 124 // 200 kmph = ~124 mph
+    }
+
+    private fun updateSpeedDisplay() {
+        val unit = if (isMetricSystem) "km/h" else "mph"
+        speedValueText.text = "$currentSpeed $unit"
+    }
+
+    private fun getSpeedUnit(): String {
+        return if (isMetricSystem) "km/h" else "mph"
+    }
+
+    private fun getDistanceUnit(): String {
+        return if (isMetricSystem) "km" else "miles"
+    }
+
+    private fun calculateRpmFromSpeed(speed: Int) {
+        when {
+            speed == 0 -> {
+                // Engine off or idle
+                currentRPM = 0
+                realTimeRpmOverride = 0
+                isEngineRunning = false
+            }
+            speed > 0 && speed <= 10 -> {
+                // Idle/low speed
+                currentRPM = (700..900).random()
+                realTimeRpmOverride = currentRPM
+                isEngineRunning = true
+            }
+            speed > 10 -> {
+                // Calculate RPM based on speed with realistic gear simulation
+                val baseRPM = when {
+                    speed <= 30 -> (speed * 80) + 800  // 1st gear
+                    speed <= 60 -> (speed * 45) + 1200 // 2nd gear
+                    speed <= 90 -> (speed * 30) + 1500 // 3rd gear
+                    speed <= 120 -> (speed * 25) + 1800 // 4th gear
+                    else -> (speed * 20) + 2000 // 5th gear
+                }
+                currentRPM = (baseRPM + random.nextInt(200) - 100).coerceIn(800, 6000)
+                realTimeRpmOverride = currentRPM
+                isEngineRunning = true
+            }
+        }
+
+        // Update RPM field to show calculated value
+        runOnUiThread {
+            rpmEditText.setText(currentRPM.toString())
+        }
     }
 
     private fun readUserInputValues() {
@@ -435,6 +649,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
             if (!isSpeedDynamic) {
                 currentSpeed = speedSeekBar.progress
+                realTimeSpeedOverride = currentSpeed
             }
 
             updateDashboard()
@@ -469,7 +684,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             dashVinText.text = vin
 
             if (!isSpeedDynamic) {
-                speedValueText.text = "$currentSpeed km/h"
+                updateSpeedDisplay()
             }
         }
     }
@@ -501,7 +716,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         bluetoothService.start()
         statusTextView.text = "Status: ECM Emitter - Waiting for Client Connection..."
         messagesTextView.text =
-            "=== ECM Emitter Mode Started ===\nDevice is discoverable as 'ECM Emitter'\nWaiting for client to connect...\nWill start emitting ECM data once connected.\n"
+            "=== ECM Emitter Mode Started ===\nDevice is discoverable as 'ECM Emitter'\nWaiting for client to connect...\nWill start emitting ECM data once connected.\n\n✅ REAL-TIME EDITING ENABLED!\nYou can now edit speed, RPM, VIN, and other values while transmitting!"
         updateButtonStates()
     }
 
@@ -595,6 +810,14 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             isScanning = false
         }
 
+        // Clear real-time overrides and editing flags
+        realTimeSpeedOverride = null
+        realTimeRpmOverride = null
+        isUserEditingOdometer = false
+        isUserEditingEngineHours = false
+        isUserEditingRpm = false
+        isUserEditingVin = false
+
         bluetoothService.stop()
         statusTextView.text = "Status: Stopped"
         updateButtonStates()
@@ -608,13 +831,15 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         stopButton.isEnabled = isActive
         frequencySeekBar.isEnabled = !isActive
 
-        // Disable input fields when active
-        vinEditText.isEnabled = !isActive
-        rpmEditText.isEnabled = !isActive
-        engineHoursEditText.isEnabled = !isActive
-        odometerEditText.isEnabled = !isActive
-        speedDynamicCheckBox.isEnabled = !isActive
-        speedSeekBar.isEnabled = !isActive && !isSpeedDynamic
+        // Enable input fields for real-time editing when transmitting
+        val enableRealTimeEditing = isAutoSending // Allow editing when emitting ECM data
+        vinEditText.isEnabled = !isActive || enableRealTimeEditing
+        rpmEditText.isEnabled = !isActive || enableRealTimeEditing
+        engineHoursEditText.isEnabled = !isActive || enableRealTimeEditing
+        odometerEditText.isEnabled = !isActive || enableRealTimeEditing
+        speedDynamicCheckBox.isEnabled = !isActive || enableRealTimeEditing
+        speedSeekBar.isEnabled = (!isActive && !isSpeedDynamic) || (enableRealTimeEditing && !isSpeedDynamic)
+        unitToggleButton.isEnabled = !isActive || enableRealTimeEditing
     }
 
     private fun requestPermissions() {
@@ -697,7 +922,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                         }
 
                         "Speed" -> {
-                            val speedValue = keyValue[1].replace("km/h", "").toIntOrNull() ?: 0
+                            val speedValue = keyValue[1].replace("km/h", "").replace("mph", "").toIntOrNull() ?: 0
                             currentSpeed = speedValue
                             dashSpeedText.text = currentSpeed.toString()
                         }
@@ -722,6 +947,11 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                                     ContextCompat.getColor(this, android.R.color.holo_red_light)
                             )
                         }
+
+                        "Units" -> {
+                            isMetricSystem = keyValue[1] == "Metric"
+                            updateUnitDisplay()
+                        }
                     }
                 }
             }
@@ -734,12 +964,12 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         Log.d(TAG, "onConnected() called. Device: $deviceName")
         if (isAutoSending) {
             // Server mode - start emitting ECM data
-            statusTextView.text = "Status: ECM Emitter - Sending data to $deviceName"
+            statusTextView.text = "Status: ECM Emitter - Sending data to $deviceName (LIVE EDITING ENABLED)"
             autoSendHandler.post(autoSendRunnable)
             Toast.makeText(
                 this,
-                "Client connected! Starting ECM data emission...",
-                Toast.LENGTH_SHORT
+                "Client connected! ECM data emission started. You can edit values in real-time!",
+                Toast.LENGTH_LONG
             ).show()
         } else if (isReceiving) {
             // Client mode - ready to receive ECM data
@@ -775,7 +1005,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     override fun onListenStarted() {
         Log.d(TAG, "onListenStarted() called.")
         if (isAutoSending) {  // Changed from isReceiving to isAutoSending
-            statusTextView.text = "Status: ECM Emitter - Ready to Accept Client Connections"
+            statusTextView.text = "Status: ECM Emitter - Ready to Accept Client Connections (LIVE EDITING READY)"
         }
     }
 
@@ -806,8 +1036,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private var engineStartTime: Long = 0
 
     private fun generateVIN(): String {
-        val vinChars = "123456789ABCDEFGHJKLMNPRSTUVWXYZ" // Excluding I, O, Q
-        return (1..17).map { vinChars[random.nextInt(vinChars.length)] }.joinToString("")
+        return "1HGCM82633A004352"
     }
 
     fun generateECMData(): String {
@@ -815,8 +1044,23 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         val timeDeltaSeconds = (currentTime - lastUpdateTime) / 1000.0
         lastUpdateTime = currentTime
 
-        // Use dynamic speed or manual speed based on checkbox
-        if (isSpeedDynamic) {
+        // Check for real-time overrides first
+        realTimeSpeedOverride?.let { overrideSpeed ->
+            currentSpeed = overrideSpeed
+            isEngineRunning = overrideSpeed > 0
+            if (isEngineRunning && engineStartTime == 0L) {
+                engineStartTime = currentTime
+            } else if (!isEngineRunning) {
+                engineStartTime = 0L
+            }
+        }
+
+        realTimeRpmOverride?.let { overrideRpm ->
+            currentRPM = overrideRpm
+        }
+
+        // Use dynamic speed or manual speed based on checkbox (only if no real-time override)
+        if (isSpeedDynamic && realTimeSpeedOverride == null) {
             // Simulate engine state changes (randomly start/stop engine)
             if (!isEngineRunning && random.nextDouble() < 0.05) { // 5% chance to start
                 isEngineRunning = true
@@ -834,44 +1078,78 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                     else -> -(random.nextInt(5) + 1) // Decelerate
                 }
                 currentSpeed = (currentSpeed + speedChange).coerceIn(0, 120)
+
+                // Update the seekbar to reflect dynamic changes
+                runOnUiThread {
+                    speedSeekBar.progress = currentSpeed
+                    updateSpeedDisplay()
+                }
             } else {
                 currentSpeed = 0
-            }
-        } else {
-            // Use manual speed from seekbar
-            isEngineRunning = currentSpeed > 0
-            if (isEngineRunning && engineStartTime == 0L) {
-                engineStartTime = currentTime
+                runOnUiThread {
+                    speedSeekBar.progress = 0
+                    updateSpeedDisplay()
+                }
             }
         }
 
-        // Generate realistic RPM based on engine state and speed
-        if (isEngineRunning) {
-            when {
-                currentSpeed == 0 -> {
-                    // Idle RPM with some variation
-                    currentRPM = (700..900).random() + random.nextInt(100)
-                }
+        // Generate realistic RPM based on engine state and speed (only if no real-time override)
+        if (realTimeRpmOverride == null) {
+            if (isEngineRunning) {
+                when {
+                    currentSpeed == 0 -> {
+                        // Idle RPM with some variation
+                        currentRPM = (700..900).random() + random.nextInt(100)
+                    }
 
-                currentSpeed > 0 -> {
-                    // RPM roughly correlates with speed, but add gear simulation
-                    val baseRPM = (currentSpeed * 35) + (600..800).random()
-                    currentRPM = (baseRPM + random.nextInt(300) - 150).coerceIn(800, 4000)
+                    currentSpeed > 0 -> {
+                        // RPM calculation based on speed with gear simulation
+                        val baseRPM = when {
+                            currentSpeed <= 30 -> (currentSpeed * 80) + 800  // 1st gear
+                            currentSpeed <= 60 -> (currentSpeed * 45) + 1200 // 2nd gear
+                            currentSpeed <= 90 -> (currentSpeed * 30) + 1500 // 3rd gear
+                            currentSpeed <= 120 -> (currentSpeed * 25) + 1800 // 4th gear
+                            else -> (currentSpeed * 20) + 2000 // 5th gear
+                        }
+                        currentRPM = (baseRPM + random.nextInt(300) - 150).coerceIn(800, 6000)
+                    }
+                }
+            } else {
+                currentRPM = 0
+            }
+
+            // Update RPM field to show calculated value (only if user is not editing)
+            if (!isUserEditingRpm) {
+                runOnUiThread {
+                    rpmEditText.setText(currentRPM.toString())
                 }
             }
-        } else {
-            currentRPM = 0
         }
 
         // Update odometer based on speed and time
         if (currentSpeed > 0 && timeDeltaSeconds > 0) {
-            val distanceKm = (currentSpeed * timeDeltaSeconds) / 3600.0 // Convert to km
-            odometer += distanceKm
+            val distanceKm = (currentSpeed * timeDeltaSeconds) / 3600.0 // Convert to distance units
+            val distanceToAdd = if (isMetricSystem) distanceKm else distanceKm / 1.60934 // Convert to miles if imperial
+            odometer += distanceToAdd
+
+            // Update odometer field to show new value (only if user is not editing)
+            if (!isUserEditingOdometer) {
+                runOnUiThread {
+                    odometerEditText.setText(odometer.toInt().toString())
+                }
+            }
         }
 
         // Update engine hours
         if (isEngineRunning && timeDeltaSeconds > 0) {
             engineHours += timeDeltaSeconds / 3600.0 // Convert seconds to hours
+
+            // Update engine hours field to show new value (only if user is not editing)
+            if (!isUserEditingEngineHours) {
+                runOnUiThread {
+                    engineHoursEditText.setText(String.format("%.1f", engineHours))
+                }
+            }
         }
 
         // Generate other realistic values
@@ -903,7 +1181,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                 "%.1f",
                 engineHours
             )
-        },State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${currentSpeed}km/h,Throttle:$throttlePos%"
+        },State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${currentSpeed}${getSpeedUnit()},Throttle:$throttlePos%,Units:${if (isMetricSystem) "Metric" else "Imperial"}"
     }
 
     companion object {
