@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.util.Log
+import android.view.View
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -26,6 +27,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
 
+    // UI Components
     private lateinit var statusTextView: TextView
     private lateinit var messagesTextView: TextView
     private lateinit var receiveButton: Button
@@ -34,6 +36,26 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private lateinit var scanButton: Button
     private lateinit var frequencySeekBar: SeekBar
     private lateinit var frequencyLabel: TextView
+    private lateinit var toggleScannerButton: Button
+    private lateinit var deviceScannerLayout: LinearLayout
+    private lateinit var deviceListView: ListView
+
+    // Input Fields
+    private lateinit var vinEditText: EditText
+    private lateinit var rpmEditText: EditText
+    private lateinit var engineHoursEditText: EditText
+    private lateinit var odometerEditText: EditText
+    private lateinit var speedSeekBar: SeekBar
+    private lateinit var speedDynamicCheckBox: CheckBox
+    private lateinit var speedValueText: TextView
+
+    // Dashboard Display
+    private lateinit var dashSpeedText: TextView
+    private lateinit var dashRpmText: TextView
+    private lateinit var dashEngineHoursText: TextView
+    private lateinit var dashOdometerText: TextView
+    private lateinit var dashEngineStateText: TextView
+    private lateinit var dashVinText: TextView
 
     private lateinit var bluetoothService: BluetoothService
 
@@ -49,10 +71,21 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private lateinit var deviceListAdapter: ArrayAdapter<String>
     private var deviceSelectionDialog: AlertDialog? = null
 
+    // User-configured initial values
+    private var userVin: String = ""
+    private var userInitialRpm: Int = 0
+    private var userInitialSpeed: Int = 0
+    private var userInitialEngineHours: Double = 0.0
+    private var userInitialOdometer: Double = 0.0
+    private var isSpeedDynamic: Boolean = true
+
     // Runnable for automatic data sending
     private val autoSendRunnable = object : Runnable {
         override fun run() {
-            Log.d(TAG, "autoSendRunnable: run() called. isAutoSending: $isAutoSending, BluetoothService state: ${bluetoothService.currentState}")
+            Log.d(
+                TAG,
+                "autoSendRunnable: run() called. isAutoSending: $isAutoSending, BluetoothService state: ${bluetoothService.currentState}"
+            )
             if (bluetoothService.currentState == BluetoothService.STATE_CONNECTED && isAutoSending) {
                 val ecmData = generateECMData()
                 Log.d(TAG, "autoSendRunnable: Generated ECM data: $ecmData")
@@ -60,13 +93,19 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                 messageCount++
                 messagesTextView.append("\n[${messageCount}] ECM Emitted: $ecmData")
 
+                // Update dashboard
+                updateDashboard()
+
                 // Auto-scroll to bottom
                 runOnUiThread {
                     val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
                     scrollView.post { scrollView.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
                 }
             } else {
-                Log.w(TAG, "autoSendRunnable: Not sending data. Not connected or auto-sending stopped. Current state: ${bluetoothService.currentState}")
+                Log.w(
+                    TAG,
+                    "autoSendRunnable: Not sending data. Not connected or auto-sending stopped. Current state: ${bluetoothService.currentState}"
+                )
                 stopAutoSending()
             }
             if (isAutoSending) {
@@ -82,14 +121,18 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private val receiver = object : BroadcastReceiver() {
         @SuppressLint("MissingPermission")
         override fun onReceive(context: Context, intent: Intent) {
-            when(intent.action) {
+            when (intent.action) {
                 BluetoothDevice.ACTION_FOUND -> {
-                    val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-                    }
+                    val device: BluetoothDevice? =
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            intent.getParcelableExtra(
+                                BluetoothDevice.EXTRA_DEVICE,
+                                BluetoothDevice::class.java
+                            )
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                        }
                     device?.let {
                         Log.d(TAG, "Device found: ${it.name ?: "Unknown"} - ${it.address}")
                         if (!discoveredDevices.contains(it)) {
@@ -101,12 +144,15 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                         }
                     }
                 }
+
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
                     Log.d(TAG, "Device discovery finished")
                     isScanning = false
                     updateButtonStates()
-                    statusTextView.text = "Status: Discovery completed (${discoveredDevices.size} devices found)"
+                    statusTextView.text =
+                        "Status: Discovery completed (${discoveredDevices.size} devices found)"
                 }
+
                 BluetoothAdapter.ACTION_DISCOVERY_STARTED -> {
                     Log.d(TAG, "Device discovery started")
                     statusTextView.text = "Status: Scanning for devices..."
@@ -126,27 +172,40 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                     Log.d(TAG, "mainHandler: MESSAGE_READ received. Message: '$readMessage'")
                     onMessageReceived(readMessage)
                 }
+
                 MESSAGE_CONNECTED -> {
                     val deviceName = msg.obj as String
-                    val deviceAddress = if (msg.data != null) msg.data.getString("device_address") else ""
-                    Log.d(TAG, "mainHandler: MESSAGE_CONNECTED received. Device: $deviceName ($deviceAddress)")
+                    val deviceAddress =
+                        if (msg.data != null) msg.data.getString("device_address") else ""
+                    Log.d(
+                        TAG,
+                        "mainHandler: MESSAGE_CONNECTED received. Device: $deviceName ($deviceAddress)"
+                    )
                     onConnected(deviceName, deviceAddress ?: "")
                 }
+
                 MESSAGE_CONNECTION_FAILED -> {
                     val error = msg.obj as String
                     Log.e(TAG, "mainHandler: MESSAGE_CONNECTION_FAILED received. Error: $error")
                     onConnectionFailed(error)
                 }
+
                 MESSAGE_DISCONNECTED -> {
                     Log.d(TAG, "mainHandler: MESSAGE_DISCONNECTED received.")
                     onDisconnected()
                 }
+
                 MESSAGE_CONNECTING -> {
                     val deviceName = msg.obj as String
-                    val deviceAddress = if (msg.data != null) msg.data.getString("device_address") else ""
-                    Log.d(TAG, "mainHandler: MESSAGE_CONNECTING received. Device: $deviceName ($deviceAddress)")
+                    val deviceAddress =
+                        if (msg.data != null) msg.data.getString("device_address") else ""
+                    Log.d(
+                        TAG,
+                        "mainHandler: MESSAGE_CONNECTING received. Device: $deviceName ($deviceAddress)"
+                    )
                     onConnecting(deviceName, deviceAddress ?: "")
                 }
+
                 MESSAGE_LISTEN_STARTED -> {
                     Log.d(TAG, "mainHandler: MESSAGE_LISTEN_STARTED received.")
                     onListenStarted()
@@ -156,34 +215,55 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     }
 
     // Activity Result Launchers
-    private val requestBluetoothPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-        val granted = permissions.entries.all { it.value }
-        Log.d(TAG, "requestBluetoothPermissions: Permissions result. Granted: $granted")
-        if (granted) {
-            Toast.makeText(this, "Bluetooth permissions granted", Toast.LENGTH_SHORT).show()
-            checkBluetoothEnabled()
-        } else {
-            Toast.makeText(this, "Bluetooth permissions denied. App functionality limited.", Toast.LENGTH_LONG).show()
+    private val requestBluetoothPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            val granted = permissions.entries.all { it.value }
+            Log.d(TAG, "requestBluetoothPermissions: Permissions result. Granted: $granted")
+            if (granted) {
+                Toast.makeText(this, "Bluetooth permissions granted", Toast.LENGTH_SHORT).show()
+                checkBluetoothEnabled()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Bluetooth permissions denied. App functionality limited.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
-    }
 
-    private val enableBluetoothLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        Log.d(TAG, "enableBluetoothLauncher: Bluetooth enable request result. Result code: ${result.resultCode}")
-        if (result.resultCode == RESULT_OK) {
-            Toast.makeText(this, "Bluetooth enabled", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Bluetooth not enabled. App functionality limited.", Toast.LENGTH_LONG).show()
+    private val enableBluetoothLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            Log.d(
+                TAG,
+                "enableBluetoothLauncher: Bluetooth enable request result. Result code: ${result.resultCode}"
+            )
+            if (result.resultCode == RESULT_OK) {
+                Toast.makeText(this, "Bluetooth enabled", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Bluetooth not enabled. App functionality limited.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
-    }
 
-    private val requestDiscoverabilityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        Log.d(TAG, "requestDiscoverabilityLauncher: Discoverability result. Result code: ${result.resultCode}")
-        if (result.resultCode > 0) {
-            Toast.makeText(this, "Device is now discoverable as 'ECM Emitter' for ${result.resultCode} seconds", Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, "Device discoverability was denied", Toast.LENGTH_SHORT).show()
+    private val requestDiscoverabilityLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            Log.d(
+                TAG,
+                "requestDiscoverabilityLauncher: Discoverability result. Result code: ${result.resultCode}"
+            )
+            if (result.resultCode > 0) {
+                Toast.makeText(
+                    this,
+                    "Device is now discoverable as 'ECM Emitter' for ${result.resultCode} seconds",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                Toast.makeText(this, "Device discoverability was denied", Toast.LENGTH_SHORT).show()
+            }
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -196,9 +276,11 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         requestPermissions()
         setupEventListeners()
         registerReceiver()
+        initializeUserValues()
     }
 
     private fun initializeViews() {
+        // Status and controls
         statusTextView = findViewById(R.id.statusTextView)
         messagesTextView = findViewById(R.id.messagesTextView)
         receiveButton = findViewById(R.id.receiveButton)
@@ -207,13 +289,66 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         scanButton = findViewById(R.id.scanButton)
         frequencySeekBar = findViewById(R.id.frequencySeekBar)
         frequencyLabel = findViewById(R.id.frequencyLabel)
+        toggleScannerButton = findViewById(R.id.toggleScannerButton)
+        deviceScannerLayout = findViewById(R.id.deviceScannerLayout)
+        deviceListView = findViewById(R.id.deviceListView)
+
+        // Input fields
+        vinEditText = findViewById(R.id.vinEditText)
+        rpmEditText = findViewById(R.id.rpmEditText)
+        engineHoursEditText = findViewById(R.id.engineHoursEditText)
+        odometerEditText = findViewById(R.id.odometerEditText)
+        speedSeekBar = findViewById(R.id.speedSeekBar)
+        speedDynamicCheckBox = findViewById(R.id.speedDynamicCheckBox)
+        speedValueText = findViewById(R.id.speedValueText)
+
+        // Dashboard
+        dashSpeedText = findViewById(R.id.dashSpeedText)
+        dashRpmText = findViewById(R.id.dashRpmText)
+        dashEngineHoursText = findViewById(R.id.dashEngineHoursText)
+        dashOdometerText = findViewById(R.id.dashOdometerText)
+        dashEngineStateText = findViewById(R.id.dashEngineStateText)
+        dashVinText = findViewById(R.id.dashVinText)
 
         // Initialize frequency controls
         updateFrequencyLabel()
     }
 
+    private fun initializeUserValues() {
+        // Set default values
+        userVin = generateVIN()
+        userInitialRpm = 800
+        userInitialSpeed = 0
+        userInitialEngineHours = 1500.0
+        userInitialOdometer = 125000.0
+
+        // Update UI with defaults
+        vinEditText.setText(userVin)
+        rpmEditText.setText(userInitialRpm.toString())
+        engineHoursEditText.setText(userInitialEngineHours.toString())
+        odometerEditText.setText(userInitialOdometer.toInt().toString())
+        speedSeekBar.progress = userInitialSpeed
+        speedValueText.text = "$userInitialSpeed km/h"
+
+        // Initialize runtime values
+        vin = userVin
+        currentRPM = userInitialRpm
+        currentSpeed = userInitialSpeed
+        engineHours = userInitialEngineHours
+        odometer = userInitialOdometer
+
+        updateDashboard()
+    }
+
     private fun setupDeviceDiscovery() {
-        deviceListAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf<String>())
+        deviceListAdapter =
+            ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf<String>())
+        deviceListView.adapter = deviceListAdapter
+
+        deviceListView.setOnItemClickListener { _, _, position, _ ->
+            val selectedDevice = discoveredDevices[position]
+            connectToDevice(selectedDevice)
+        }
     }
 
     private fun registerReceiver() {
@@ -228,6 +363,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private fun setupEventListeners() {
         receiveButton.setOnClickListener {
             Log.d(TAG, "receiveButton clicked.")
+            readUserInputValues()
             startReceiveMode()
         }
 
@@ -246,6 +382,10 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             stopAllOperations()
         }
 
+        toggleScannerButton.setOnClickListener {
+            toggleDeviceScanner()
+        }
+
         frequencySeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 // Map progress (0-100) to frequency (100ms - 5000ms)
@@ -256,11 +396,88 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
+        speedDynamicCheckBox.setOnCheckedChangeListener { _, isChecked ->
+            isSpeedDynamic = isChecked
+            speedSeekBar.isEnabled = !isChecked
+            if (!isChecked) {
+                currentSpeed = speedSeekBar.progress
+                speedValueText.text = "$currentSpeed km/h"
+            }
+        }
+
+        speedSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && !isSpeedDynamic) {
+                    currentSpeed = progress
+                    speedValueText.text = "$currentSpeed km/h"
+                    updateDashboard()
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+    }
+
+    private fun readUserInputValues() {
+        try {
+            userVin = vinEditText.text.toString().takeIf { it.isNotEmpty() } ?: generateVIN()
+            userInitialRpm = rpmEditText.text.toString().toIntOrNull() ?: 800
+            userInitialEngineHours = engineHoursEditText.text.toString().toDoubleOrNull() ?: 1500.0
+            userInitialOdometer = odometerEditText.text.toString().toDoubleOrNull() ?: 125000.0
+
+            // Reset runtime values with user input
+            vin = userVin
+            currentRPM = userInitialRpm
+            engineHours = userInitialEngineHours
+            odometer = userInitialOdometer
+
+            if (!isSpeedDynamic) {
+                currentSpeed = speedSeekBar.progress
+            }
+
+            updateDashboard()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Invalid input values. Using defaults.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun toggleDeviceScanner() {
+        if (deviceScannerLayout.visibility == View.GONE) {
+            deviceScannerLayout.visibility = View.VISIBLE
+            toggleScannerButton.text = "🔼 Hide Device Scanner"
+        } else {
+            deviceScannerLayout.visibility = View.GONE
+            toggleScannerButton.text = "🔍 Show Device Scanner"
+        }
+    }
+
+    private fun updateDashboard() {
+        runOnUiThread {
+            dashSpeedText.text = currentSpeed.toString()
+            dashRpmText.text = currentRPM.toString()
+            dashEngineHoursText.text = String.format("%.1f", engineHours)
+            dashOdometerText.text = odometer.toInt().toString()
+            dashEngineStateText.text = if (isEngineRunning) "RUNNING" else "OFF"
+            dashEngineStateText.setTextColor(
+                if (isEngineRunning)
+                    ContextCompat.getColor(this, android.R.color.holo_green_light)
+                else
+                    ContextCompat.getColor(this, android.R.color.holo_red_light)
+            )
+            dashVinText.text = vin
+
+            if (!isSpeedDynamic) {
+                speedValueText.text = "$currentSpeed km/h"
+            }
+        }
     }
 
     private fun updateFrequencyLabel() {
         val frequency = 1000.0 / sendFrequencyMillis
-        frequencyLabel.text = "Send Frequency: ${String.format("%.1f", frequency)} Hz (${sendFrequencyMillis}ms)"
+        frequencyLabel.text =
+            "Data Frequency: ${String.format("%.1f", frequency)} Hz (${sendFrequencyMillis}ms)"
     }
 
     @SuppressLint("MissingPermission")
@@ -283,10 +500,10 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
 
         bluetoothService.start()
         statusTextView.text = "Status: ECM Emitter - Waiting for Client Connection..."
-        messagesTextView.text = "=== ECM Emitter Mode Started ===\nDevice is discoverable as 'ECM Emitter'\nWaiting for client to connect...\nWill start emitting ECM data once connected.\n"
+        messagesTextView.text =
+            "=== ECM Emitter Mode Started ===\nDevice is discoverable as 'ECM Emitter'\nWaiting for client to connect...\nWill start emitting ECM data once connected.\n"
         updateButtonStates()
     }
-
 
     private fun showScanDialog() {
         if (bluetoothAdapter?.isEnabled != true) {
@@ -356,12 +573,14 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private fun connectToDevice(device: BluetoothDevice) {
         stopAllOperations()
         messageCount = 0
-        messagesTextView.text = "=== Client Mode Started ===\nConnecting to ECM Emitter: ${device.name ?: "Unknown Device"}...\nWaiting to receive ECM data...\n"
+        messagesTextView.text =
+            "=== Client Mode Started ===\nConnecting to ECM Emitter: ${device.name ?: "Unknown Device"}...\nWaiting to receive ECM data...\n"
 
         isAutoSending = false  // Client doesn't send, it receives
         isReceiving = true     // Client receives ECM data
         bluetoothService.connect(device)
-        statusTextView.text = "Status: Connecting to ECM Emitter: ${device.name ?: "Unknown Device"}..."
+        statusTextView.text =
+            "Status: Connecting to ECM Emitter: ${device.name ?: "Unknown Device"}..."
         updateButtonStates()
     }
 
@@ -388,6 +607,14 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         scanButton.isEnabled = !isActive && !isAutoSending  // Can't scan when emitting
         stopButton.isEnabled = isActive
         frequencySeekBar.isEnabled = !isActive
+
+        // Disable input fields when active
+        vinEditText.isEnabled = !isActive
+        rpmEditText.isEnabled = !isActive
+        engineHoursEditText.isEnabled = !isActive
+        odometerEditText.isEnabled = !isActive
+        speedDynamicCheckBox.isEnabled = !isActive
+        speedSeekBar.isEnabled = !isActive && !isSpeedDynamic
     }
 
     private fun requestPermissions() {
@@ -444,9 +671,63 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         messageCount++
         messagesTextView.append("\n[${messageCount}] ECM Data Received: $message")
 
+        // Parse and update dashboard with received data
+        parseReceivedData(message)
+
         // Auto-scroll to bottom
         val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
         scrollView.post { scrollView.fullScroll(android.widget.ScrollView.FOCUS_DOWN) }
+    }
+
+    private fun parseReceivedData(data: String) {
+        try {
+            val parts = data.split(",")
+            parts.forEach { part ->
+                val keyValue = part.split(":")
+                if (keyValue.size == 2) {
+                    when (keyValue[0]) {
+                        "VIN" -> {
+                            vin = keyValue[1]
+                            dashVinText.text = vin
+                        }
+
+                        "RPM" -> {
+                            currentRPM = keyValue[1].toIntOrNull() ?: 0
+                            dashRpmText.text = currentRPM.toString()
+                        }
+
+                        "Speed" -> {
+                            val speedValue = keyValue[1].replace("km/h", "").toIntOrNull() ?: 0
+                            currentSpeed = speedValue
+                            dashSpeedText.text = currentSpeed.toString()
+                        }
+
+                        "ODO" -> {
+                            odometer = keyValue[1].toDoubleOrNull() ?: 0.0
+                            dashOdometerText.text = odometer.toInt().toString()
+                        }
+
+                        "EH" -> {
+                            engineHours = keyValue[1].toDoubleOrNull() ?: 0.0
+                            dashEngineHoursText.text = String.format("%.1f", engineHours)
+                        }
+
+                        "State" -> {
+                            isEngineRunning = keyValue[1] == "RUNNING"
+                            dashEngineStateText.text = if (isEngineRunning) "RUNNING" else "OFF"
+                            dashEngineStateText.setTextColor(
+                                if (isEngineRunning)
+                                    ContextCompat.getColor(this, android.R.color.holo_green_light)
+                                else
+                                    ContextCompat.getColor(this, android.R.color.holo_red_light)
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing received data: $data", e)
+        }
     }
 
     override fun onConnected(deviceName: String, deviceAddress: String) {
@@ -455,11 +736,16 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             // Server mode - start emitting ECM data
             statusTextView.text = "Status: ECM Emitter - Sending data to $deviceName"
             autoSendHandler.post(autoSendRunnable)
-            Toast.makeText(this, "Client connected! Starting ECM data emission...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                "Client connected! Starting ECM data emission...",
+                Toast.LENGTH_SHORT
+            ).show()
         } else if (isReceiving) {
             // Client mode - ready to receive ECM data
             statusTextView.text = "Status: Client - Receiving ECM data from $deviceName"
-            Toast.makeText(this, "Connected to ECM Emitter! Receiving data...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Connected to ECM Emitter! Receiving data...", Toast.LENGTH_SHORT)
+                .show()
         }
     }
 
@@ -506,9 +792,11 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
     private val random = Random()
 
     // Persistent values that should remain consistent or change gradually
-    private val vin: String = generateVIN()
-    private var odometer: Double = (random.nextInt(400000) + 50000).toDouble() // Start with realistic mileage
-    private var engineHours: Double = odometer / 60.0 + random.nextDouble() * 1000 // Roughly correlated with odometer
+    private var vin: String = generateVIN()
+    private var odometer: Double =
+        (random.nextInt(400000) + 50000).toDouble() // Start with realistic mileage
+    private var engineHours: Double =
+        odometer / 60.0 + random.nextDouble() * 1000 // Roughly correlated with odometer
     private var currentSpeed: Int = 0
     private var currentRPM: Int = 0
     private var lastUpdateTime: Long = System.currentTimeMillis()
@@ -527,13 +815,34 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         val timeDeltaSeconds = (currentTime - lastUpdateTime) / 1000.0
         lastUpdateTime = currentTime
 
-        // Simulate engine state changes (randomly start/stop engine)
-        if (!isEngineRunning && random.nextDouble() < 0.05) { // 5% chance to start
-            isEngineRunning = true
-            engineStartTime = currentTime
-        } else if (isEngineRunning && random.nextDouble() < 0.02) { // 2% chance to stop
-            isEngineRunning = false
-            currentSpeed = 0
+        // Use dynamic speed or manual speed based on checkbox
+        if (isSpeedDynamic) {
+            // Simulate engine state changes (randomly start/stop engine)
+            if (!isEngineRunning && random.nextDouble() < 0.05) { // 5% chance to start
+                isEngineRunning = true
+                engineStartTime = currentTime
+            } else if (isEngineRunning && random.nextDouble() < 0.02) { // 2% chance to stop
+                isEngineRunning = false
+                currentSpeed = 0
+            }
+
+            // Generate realistic speed changes (gradual acceleration/deceleration)
+            if (isEngineRunning) {
+                val speedChange = when {
+                    random.nextDouble() < 0.3 -> 0 // 30% chance no change
+                    random.nextDouble() < 0.6 -> random.nextInt(5) + 1 // Accelerate
+                    else -> -(random.nextInt(5) + 1) // Decelerate
+                }
+                currentSpeed = (currentSpeed + speedChange).coerceIn(0, 120)
+            } else {
+                currentSpeed = 0
+            }
+        } else {
+            // Use manual speed from seekbar
+            isEngineRunning = currentSpeed > 0
+            if (isEngineRunning && engineStartTime == 0L) {
+                engineStartTime = currentTime
+            }
         }
 
         // Generate realistic RPM based on engine state and speed
@@ -543,6 +852,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                     // Idle RPM with some variation
                     currentRPM = (700..900).random() + random.nextInt(100)
                 }
+
                 currentSpeed > 0 -> {
                     // RPM roughly correlates with speed, but add gear simulation
                     val baseRPM = (currentSpeed * 35) + (600..800).random()
@@ -551,18 +861,6 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             }
         } else {
             currentRPM = 0
-        }
-
-        // Generate realistic speed changes (gradual acceleration/deceleration)
-        if (isEngineRunning) {
-            val speedChange = when {
-                random.nextDouble() < 0.3 -> 0 // 30% chance no change
-                random.nextDouble() < 0.6 -> random.nextInt(5) + 1 // Accelerate
-                else -> -(random.nextInt(5) + 1) // Decelerate
-            }
-            currentSpeed = (currentSpeed + speedChange).coerceIn(0, 120)
-        } else {
-            currentSpeed = 0
         }
 
         // Update odometer based on speed and time
@@ -600,7 +898,12 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             }
         }
 
-        return "TS:$currentTime,VIN:$vin,ODO:${odometer.toInt()},RPM:$currentRPM,EH:${String.format("%.1f", engineHours)},State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${currentSpeed}km/h,Throttle:$throttlePos%"
+        return "TS:$currentTime,VIN:$vin,ODO:${odometer.toInt()},RPM:$currentRPM,EH:${
+            String.format(
+                "%.1f",
+                engineHours
+            )
+        },State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${currentSpeed}km/h,Throttle:$throttlePos%"
     }
 
     companion object {

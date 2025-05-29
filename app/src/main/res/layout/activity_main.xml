@@ -1,186 +1,589 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
+    android:fillViewport="true"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/statusTextView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Status: Not connected"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp"
-        android:background="#f0f0f0"
-        android:padding="8dp"
-        android:textColor="@android:color/black" />
-
-    <!-- Control Buttons -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_horizontal"
-        android:layout_marginBottom="8dp">
-
-        <Button
-            android:id="@+id/receiveButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="🚗 ECM Emitter\n(Emit Data)"
-            android:layout_marginEnd="2dp"
-            android:textSize="11sp"
-            android:backgroundTint="#4CAF50" />
-
-        <Button
-            android:id="@+id/sendButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="📱 Connect to ECM\n(Receive Data)"
-            android:layout_marginStart="2dp"
-            android:layout_marginEnd="2dp"
-            android:textSize="11sp"
-            android:backgroundTint="#2196F3" />
-
-        <Button
-            android:id="@+id/stopButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Stop"
-            android:layout_marginStart="2dp"
-            android:enabled="false"
-            android:textSize="11sp"
-            android:backgroundTint="#d32f2f" />
-
-    </LinearLayout>
-
-    <!-- Scan Button -->
-    <Button
-        android:id="@+id/scanButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🔍 Scan for ECM Emitter Devices"
-        android:layout_marginBottom="16dp"
-        android:textSize="14sp"
-        android:backgroundTint="#FF9800"
-        android:textColor="@android:color/white" />
-
-    <!-- Frequency Control -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginBottom="16dp"
-        android:background="#e8f5e8"
-        android:padding="12dp">
+        android:padding="16dp">
 
+        <!-- Status Bar -->
         <TextView
-            android:id="@+id/frequencyLabel"
+            android:id="@+id/statusTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="ECM Data Emission Frequency: 1.0 Hz (1000ms)"
-            android:textSize="14sp"
+            android:text="Status: Not connected"
+            android:textSize="16sp"
             android:textStyle="bold"
-            android:layout_marginBottom="8dp"
-            android:textColor="@android:color/black" />
+            android:layout_marginBottom="16dp"
+            android:background="#2C3E50"
+            android:padding="12dp"
+            android:textColor="@android:color/white"
+            android:gravity="center" />
 
-        <SeekBar
-            android:id="@+id/frequencySeekBar"
+        <!-- ECM Configuration Section -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="100"
-            android:progress="18" />
+            android:orientation="vertical"
+            android:background="#F8F9FA"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔧 ECM Configuration"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#2C3E50"
+                android:layout_marginBottom="16dp" />
+
+            <!-- VIN Input -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:text="VIN:"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:gravity="center_vertical" />
+
+                <EditText
+                    android:id="@+id/vinEditText"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/edit_text_background"
+                    android:padding="8dp"
+                    android:textSize="12sp"
+                    android:maxLength="17"
+                    android:hint="17-character VIN" />
+
+            </LinearLayout>
+
+            <!-- RPM Input -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:text="RPM:"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:gravity="center_vertical" />
+
+                <EditText
+                    android:id="@+id/rpmEditText"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/edit_text_background"
+                    android:padding="8dp"
+                    android:textSize="14sp"
+                    android:inputType="number"
+                    android:hint="Engine RPM" />
+
+            </LinearLayout>
+
+            <!-- Speed Controls -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="80dp"
+                        android:layout_height="wrap_content"
+                        android:text="Speed:"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:gravity="center_vertical" />
+
+                    <CheckBox
+                        android:id="@+id/speedDynamicCheckBox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Dynamic"
+                        android:textSize="12sp"
+                        android:checked="true" />
+
+                    <TextView
+                        android:id="@+id/speedValueText"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="0 km/h"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:gravity="end"
+                        android:textColor="#E74C3C" />
+
+                </LinearLayout>
+
+                <SeekBar
+                    android:id="@+id/speedSeekBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="200"
+                    android:progress="0"
+                    android:enabled="false" />
+
+            </LinearLayout>
+
+            <!-- Engine Hours Input -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:text="Eng. Hrs:"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:gravity="center_vertical" />
+
+                <EditText
+                    android:id="@+id/engineHoursEditText"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/edit_text_background"
+                    android:padding="8dp"
+                    android:textSize="14sp"
+                    android:inputType="numberDecimal"
+                    android:hint="Engine Hours" />
+
+            </LinearLayout>
+
+            <!-- Odometer Input -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:text="Odometer:"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:gravity="center_vertical" />
+
+                <EditText
+                    android:id="@+id/odometerEditText"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/edit_text_background"
+                    android:padding="8dp"
+                    android:textSize="14sp"
+                    android:inputType="number"
+                    android:hint="Kilometers" />
+
+            </LinearLayout>
+
+            <!-- Frequency Control -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:id="@+id/frequencyLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Data Frequency: 1.0 Hz (1000ms)"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp" />
+
+                <SeekBar
+                    android:id="@+id/frequencySeekBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progress="18" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Control Buttons -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="4dp">
+            android:layout_marginBottom="16dp">
 
-            <TextView
+            <Button
+                android:id="@+id/receiveButton"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="50dp"
                 android:layout_weight="1"
-                android:text="Fast (10Hz)"
+                android:text="🚗 Start ECM Emitter"
+                android:layout_marginEnd="4dp"
                 android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
+                android:backgroundTint="#27AE60" />
 
-            <TextView
+            <Button
+                android:id="@+id/sendButton"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="50dp"
                 android:layout_weight="1"
-                android:text="Slow (0.2Hz)"
+                android:text="📱 Connect to ECM"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
                 android:textSize="12sp"
-                android:gravity="end"
-                android:textColor="@android:color/darker_gray" />
+                android:backgroundTint="#3498DB" />
+
+            <Button
+                android:id="@+id/stopButton"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:text="⏹ Stop"
+                android:layout_marginStart="4dp"
+                android:enabled="false"
+                android:textSize="12sp"
+                android:backgroundTint="#E74C3C" />
 
         </LinearLayout>
 
-    </LinearLayout>
+        <!-- Device Scanner Toggle -->
+        <Button
+            android:id="@+id/toggleScannerButton"
+            android:layout_width="match_parent"
+            android:layout_height="45dp"
+            android:text="🔍 Show Device Scanner"
+            android:layout_marginBottom="8dp"
+            android:textSize="14sp"
+            android:backgroundTint="#F39C12"
+            android:textColor="@android:color/white" />
 
-    <!-- Messages Section -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="ECM Data Stream:"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="8dp"
-        android:textColor="@android:color/black" />
-
-    <ScrollView
-        android:id="@+id/scrollView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginBottom="16dp"
-        android:background="#f8f8f8"
-        android:padding="4dp">
-
-        <TextView
-            android:id="@+id/messagesTextView"
+        <!-- Device Scanner (Initially Hidden) -->
+        <LinearLayout
+            android:id="@+id/deviceScannerLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Ready to start ECM communication...\n\n🚗 Device A (ECM): Click 'ECM Emitter' to become discoverable and emit engine data\n📱 Device B (Client): Click 'Connect to ECM' to scan and receive engine data"
-            android:padding="8dp"
-            android:textColor="@android:color/black"
-            android:textSize="12sp"
-            android:fontFamily="monospace" />
+            android:orientation="vertical"
+            android:background="#FFF3E0"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone">
 
-    </ScrollView>
+            <Button
+                android:id="@+id/scanButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔍 Scan for ECM Devices"
+                android:layout_marginBottom="8dp"
+                android:textSize="14sp"
+                android:backgroundTint="#FF9800" />
 
-    <!-- Statistics -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#f0f8ff"
-        android:padding="8dp">
+            <ListView
+                android:id="@+id/deviceListView"
+                android:layout_width="match_parent"
+                android:layout_height="150dp"
+                android:background="@android:color/white"
+                android:padding="8dp" />
 
-        <TextView
-            android:layout_width="0dp"
+        </LinearLayout>
+
+        <!-- Real-time Dashboard -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="🚗 ECM Data Emulator"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
+            android:orientation="vertical"
+            android:background="#1A252F"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📊 Live ECM Dashboard"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#ECF0F1"
+                android:layout_marginBottom="16dp"
+                android:gravity="center" />
+
+            <!-- Dashboard Grid -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <!-- Left Column -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginEnd="8dp">
+
+                    <!-- Speed Display -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#34495E"
+                        android:padding="12dp"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="SPEED"
+                            android:textSize="12sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:id="@+id/dashSpeedText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            android:textColor="#E74C3C"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="km/h"
+                            android:textSize="10sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                    </LinearLayout>
+
+                    <!-- RPM Display -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#34495E"
+                        android:padding="12dp"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="RPM"
+                            android:textSize="12sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:id="@+id/dashRpmText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            android:textColor="#3498DB"
+                            android:gravity="center" />
+
+                    </LinearLayout>
+
+                    <!-- Engine Hours -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#34495E"
+                        android:padding="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="ENGINE HRS"
+                            android:textSize="12sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:id="@+id/dashEngineHoursText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0.0"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:textColor="#F39C12"
+                            android:gravity="center" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <!-- Right Column -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginStart="8dp">
+
+                    <!-- Odometer Display -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#34495E"
+                        android:padding="12dp"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="ODOMETER"
+                            android:textSize="12sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:id="@+id/dashOdometerText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            android:textColor="#27AE60"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="km"
+                            android:textSize="10sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                    </LinearLayout>
+
+                    <!-- Engine State -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#34495E"
+                        android:padding="12dp"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="ENGINE"
+                            android:textSize="12sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:id="@+id/dashEngineStateText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="OFF"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="#E74C3C"
+                            android:gravity="center" />
+
+                    </LinearLayout>
+
+                    <!-- VIN Display -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#34495E"
+                        android:padding="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="VIN"
+                            android:textSize="12sp"
+                            android:textColor="#BDC3C7"
+                            android:gravity="center" />
+
+                        <TextView
+                            android:id="@+id/dashVinText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="N/A"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:textColor="#9B59B6"
+                            android:gravity="center"
+                            android:maxLines="2" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Messages Section -->
         <TextView
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Protocol: Bluetooth SPP"
-            android:textSize="12sp"
-            android:gravity="end"
-            android:textColor="@android:color/darker_gray" />
+            android:text="📡 Communication Log"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"
+            android:textColor="#2C3E50" />
+
+        <ScrollView
+            android:id="@+id/scrollView"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginBottom="16dp"
+            android:background="#F8F9FA"
+            android:padding="4dp">
+
+            <TextView
+                android:id="@+id/messagesTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Ready to start ECM communication...\n\n🚗 ECM Emitter Mode: Configure values above and click 'Start ECM Emitter'\n📱 Client Mode: Click 'Connect to ECM' to receive data from an emitter"
+                android:padding="8dp"
+                android:textColor="#2C3E50"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+
+        </ScrollView>
 
     </LinearLayout>
 
-</LinearLayout>
+</ScrollView>
