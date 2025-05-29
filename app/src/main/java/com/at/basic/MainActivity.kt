@@ -503,37 +503,104 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
         }
     }
 
-    /**
-     * Enhanced ECM data generator with more realistic values
-     */
-    private fun generateECMData(): String {
-        val random = Random()
-        val timestamp = System.currentTimeMillis()
+    private val random = Random()
 
-        // Generate more realistic VIN
+    // Persistent values that should remain consistent or change gradually
+    private val vin: String = generateVIN()
+    private var odometer: Double = (random.nextInt(400000) + 50000).toDouble() // Start with realistic mileage
+    private var engineHours: Double = odometer / 60.0 + random.nextDouble() * 1000 // Roughly correlated with odometer
+    private var currentSpeed: Int = 0
+    private var currentRPM: Int = 0
+    private var lastUpdateTime: Long = System.currentTimeMillis()
+
+    // Engine state tracking
+    private var isEngineRunning: Boolean = false
+    private var engineStartTime: Long = 0
+
+    private fun generateVIN(): String {
         val vinChars = "123456789ABCDEFGHJKLMNPRSTUVWXYZ" // Excluding I, O, Q
-        val vin = (1..17).map { vinChars[random.nextInt(vinChars.length)] }.joinToString("")
+        return (1..17).map { vinChars[random.nextInt(vinChars.length)] }.joinToString("")
+    }
 
-        val odometer = random.nextInt(500000) + 10000 // 10,000 - 509,999 km
-        val rpm = when {
-            random.nextDouble() < 0.3 -> 0 // 30% chance engine is off
-            random.nextDouble() < 0.7 -> random.nextInt(1000) + 600 // Idle range
-            else -> random.nextInt(3000) + 1500 // Driving range
+    fun generateECMData(): String {
+        val currentTime = System.currentTimeMillis()
+        val timeDeltaSeconds = (currentTime - lastUpdateTime) / 1000.0
+        lastUpdateTime = currentTime
+
+        // Simulate engine state changes (randomly start/stop engine)
+        if (!isEngineRunning && random.nextDouble() < 0.05) { // 5% chance to start
+            isEngineRunning = true
+            engineStartTime = currentTime
+        } else if (isEngineRunning && random.nextDouble() < 0.02) { // 2% chance to stop
+            isEngineRunning = false
+            currentSpeed = 0
         }
 
-        val engineHours = String.format("%.1f", random.nextDouble() * 5000 + 100)
-        val engineState = if (rpm > 0) "RUNNING" else "OFF"
-        val fuelLevel = random.nextInt(101) // 0-100%
-        val coolantTemp = if (engineState == "RUNNING") {
-            random.nextInt(40) + 80 // 80-119°C when running
+        // Generate realistic RPM based on engine state and speed
+        if (isEngineRunning) {
+            when {
+                currentSpeed == 0 -> {
+                    // Idle RPM with some variation
+                    currentRPM = (700..900).random() + random.nextInt(100)
+                }
+                currentSpeed > 0 -> {
+                    // RPM roughly correlates with speed, but add gear simulation
+                    val baseRPM = (currentSpeed * 35) + (600..800).random()
+                    currentRPM = (baseRPM + random.nextInt(300) - 150).coerceIn(800, 4000)
+                }
+            }
         } else {
-            random.nextInt(30) + 20 // 20-49°C when off
+            currentRPM = 0
         }
 
-        val speed = if (rpm > 1200) random.nextInt(80) else 0 // km/h
-        val throttlePos = if (rpm > 800) random.nextInt(100) else 0 // %
+        // Generate realistic speed changes (gradual acceleration/deceleration)
+        if (isEngineRunning) {
+            val speedChange = when {
+                random.nextDouble() < 0.3 -> 0 // 30% chance no change
+                random.nextDouble() < 0.6 -> random.nextInt(5) + 1 // Accelerate
+                else -> -(random.nextInt(5) + 1) // Decelerate
+            }
+            currentSpeed = (currentSpeed + speedChange).coerceIn(0, 120)
+        } else {
+            currentSpeed = 0
+        }
 
-        return "TS:$timestamp,VIN:$vin,ODO:$odometer,RPM:$rpm,EH:$engineHours,State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${speed}km/h,Throttle:$throttlePos%"
+        // Update odometer based on speed and time
+        if (currentSpeed > 0 && timeDeltaSeconds > 0) {
+            val distanceKm = (currentSpeed * timeDeltaSeconds) / 3600.0 // Convert to km
+            odometer += distanceKm
+        }
+
+        // Update engine hours
+        if (isEngineRunning && timeDeltaSeconds > 0) {
+            engineHours += timeDeltaSeconds / 3600.0 // Convert seconds to hours
+        }
+
+        // Generate other realistic values
+        val engineState = if (isEngineRunning) "RUNNING" else "OFF"
+
+        val fuelLevel = random.nextInt(101) // This can vary independently
+
+        val coolantTemp = if (isEngineRunning) {
+            // Temperature gradually increases when running
+            val runningTime = (currentTime - engineStartTime) / 1000.0
+            val baseTemp = 85 + (runningTime / 60.0 * 2).coerceAtMost(25.0) // Warm up over time
+            (baseTemp + random.nextInt(10) - 5).toInt().coerceIn(80, 115)
+        } else {
+            random.nextInt(25) + 20 // Ambient temperature when off
+        }
+
+        val throttlePos = when {
+            !isEngineRunning -> 0
+            currentSpeed == 0 -> random.nextInt(5) // Minimal throttle at idle
+            else -> {
+                // Throttle roughly correlates with acceleration and speed
+                val baseThrottle = (currentSpeed * 0.8).toInt()
+                (baseThrottle + random.nextInt(20) - 10).coerceIn(5, 85)
+            }
+        }
+
+        return "TS:$currentTime,VIN:$vin,ODO:${odometer.toInt()},RPM:$currentRPM,EH:${String.format("%.1f", engineHours)},State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${currentSpeed}km/h,Throttle:$throttlePos%"
     }
 
     companion object {
