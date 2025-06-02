@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -20,6 +21,7 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.util.Random
 
@@ -235,6 +237,7 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             Log.d(TAG, "requestBluetoothPermissions: Permissions result. Granted: $granted")
             if (granted) {
                 Toast.makeText(this, "Bluetooth permissions granted", Toast.LENGTH_SHORT).show()
+                setBluetoothDeviceName(this, "ECM emitter")
                 checkBluetoothEnabled()
             } else {
                 Toast.makeText(
@@ -1182,6 +1185,73 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                 engineHours
             )
         },State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${currentSpeed}${getSpeedUnit()},Throttle:$throttlePos%,Units:${if (isMetricSystem) "Metric" else "Imperial"}"
+    }
+
+    fun setBluetoothDeviceName(context: Context, newName: String): Boolean {
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetoothAdapter = bluetoothManager.adapter
+
+        if (bluetoothAdapter == null) {
+            // Bluetooth is not supported on this device
+            return false
+        }
+
+        // Check for necessary permissions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // You'll need to request BLUETOOTH_CONNECT permission at runtime for Android 12+
+                // This is a simplified example; handle permission requests appropriately in your app
+                return false
+            }
+        } else {
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.BLUETOOTH_ADMIN
+                ) != PackageManager.PERMISSION_GRANTED ||
+                ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.BLUETOOTH
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // You'll need to request BLUETOOTH and BLUETOOTH_ADMIN permissions for pre-Android 12
+                return false
+            }
+        }
+
+        // Bluetooth must be enabled to set its name
+        if (!bluetoothAdapter.isEnabled) {
+            // Optionally, you can request to enable Bluetooth here:
+            // val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            // startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+            return false
+        }
+
+        // Set the new Bluetooth name
+        // Note: The `setName` method is now hidden (@hide) in recent Android versions and may not be directly accessible
+        // or may not work reliably across all devices or future Android releases.
+        // Official public APIs for changing the *local* Bluetooth name programmatically are limited for security/privacy reasons.
+        // The name is typically set by the user in system settings.
+        try {
+            // This is a common way it was done, but its reliability is not guaranteed.
+            val success = bluetoothAdapter.setName(newName)
+            return success
+        } catch (e: SecurityException) {
+            // Handle cases where permission is missing despite checks (should not happen if checks are correct)
+            e.printStackTrace()
+            return false
+        } catch (e: NoSuchMethodError) {
+            // Handle cases where the setName method is not available/accessible
+            e.printStackTrace()
+            // Log or inform the user that the name cannot be changed programmatically on this device.
+            return false
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
     }
 
     companion object {
