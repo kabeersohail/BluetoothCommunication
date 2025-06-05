@@ -922,6 +922,16 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                         "RPM" -> {
                             currentRPM = keyValue[1].toIntOrNull() ?: 0
                             dashRpmText.text = currentRPM.toString()
+
+                            // Update engine state based on RPM
+                            isEngineRunning = currentRPM > 0
+                            dashEngineStateText.text = if (isEngineRunning) "RUNNING" else "OFF"
+                            dashEngineStateText.setTextColor(
+                                if (isEngineRunning)
+                                    ContextCompat.getColor(this, android.R.color.holo_green_light)
+                                else
+                                    ContextCompat.getColor(this, android.R.color.holo_red_light)
+                            )
                         }
 
                         "Speed" -> {
@@ -940,21 +950,12 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
                             dashEngineHoursText.text = String.format("%.1f", engineHours)
                         }
 
-                        "State" -> {
-                            isEngineRunning = keyValue[1] == "RUNNING"
-                            dashEngineStateText.text = if (isEngineRunning) "RUNNING" else "OFF"
-                            dashEngineStateText.setTextColor(
-                                if (isEngineRunning)
-                                    ContextCompat.getColor(this, android.R.color.holo_green_light)
-                                else
-                                    ContextCompat.getColor(this, android.R.color.holo_red_light)
-                            )
-                        }
-
                         "Units" -> {
                             isMetricSystem = keyValue[1] == "Metric"
                             updateUnitDisplay()
                         }
+
+                        // Removed parsing for State, Fuel, Temp, Throttle
                     }
                 }
             }
@@ -1155,36 +1156,10 @@ class MainActivity : AppCompatActivity(), BluetoothCommunicationListener {
             }
         }
 
-        // Generate other realistic values
-        val engineState = if (isEngineRunning) "RUNNING" else "OFF"
-
-        val fuelLevel = random.nextInt(101) // This can vary independently
-
-        val coolantTemp = if (isEngineRunning) {
-            // Temperature gradually increases when running
-            val runningTime = (currentTime - engineStartTime) / 1000.0
-            val baseTemp = 85 + (runningTime / 60.0 * 2).coerceAtMost(25.0) // Warm up over time
-            (baseTemp + random.nextInt(10) - 5).toInt().coerceIn(80, 115)
-        } else {
-            random.nextInt(25) + 20 // Ambient temperature when off
-        }
-
-        val throttlePos = when {
-            !isEngineRunning -> 0
-            currentSpeed == 0 -> random.nextInt(5) // Minimal throttle at idle
-            else -> {
-                // Throttle roughly correlates with acceleration and speed
-                val baseThrottle = (currentSpeed * 0.8).toInt()
-                (baseThrottle + random.nextInt(20) - 10).coerceIn(5, 85)
-            }
-        }
-
+        // Return only the essential ECM data without State, Fuel, Temp, Throttle
         return "TS:$currentTime,VIN:$vin,ODO:${odometer.toInt()},RPM:$currentRPM,EH:${
-            String.format(
-                "%.1f",
-                engineHours
-            )
-        },State:$engineState,Fuel:$fuelLevel%,Temp:$coolantTemp°C,Speed:${currentSpeed}${getSpeedUnit()},Throttle:$throttlePos%,Units:${if (isMetricSystem) "Metric" else "Imperial"}"
+            String.format("%.1f", engineHours)
+        },Speed:${currentSpeed}${getSpeedUnit()},Units:${if (isMetricSystem) "Metric" else "Imperial"}"
     }
 
     fun setBluetoothDeviceName(context: Context, newName: String): Boolean {
